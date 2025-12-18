@@ -1,0 +1,12 @@
+streamlit
+pandas
+sqlalchemy
+psycopg2-binary
+scikit-learn
+lightgbm
+beautifulsoup4
+requests
+selenium
+webdriver-manager
+joblib
+tqdm
