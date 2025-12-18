@@ -333,10 +333,9 @@ def detect_grade_from_icon(element):
     return None
 
 # ---------------------------------------------------------
-# 診断機能付き get_html_content 関数
+# 修正版 get_html_content (中身チェック機能付き)
 # ---------------------------------------------------------
 def get_html_content(url):
-    # 画面上にデバッグ情報を表示するためのコンテナ（通常は閉じておく）
     debug_container = st.expander(f"🕵️‍♂️ 通信デバッグログ: {url[-20:]}", expanded=False)
     
     # 1. requests での取得を試みる
@@ -344,10 +343,20 @@ def get_html_content(url):
         debug_container.write("Attempting requests...")
         res = requests.get(url, headers=HEADERS, timeout=5)
         if res.status_code == 200:
-            debug_container.write("✅ requests success")
+            # エンコーディング対応
+            html_content = None
             for enc in ['euc-jp', 'utf-8', 'shift_jis', 'cp932']:
-                try: return res.content.decode(enc)
+                try: 
+                    html_content = res.content.decode(enc)
+                    break
                 except: continue
+            
+            # ★ここが修正点: 中身に重要なキーワードがあるかチェック！
+            if html_content and ("RaceTable" in html_content or "Shutuba_Table" in html_content or "RaceList_Box" in html_content):
+                debug_container.write("✅ requests success (Valid content found)")
+                return html_content
+            else:
+                debug_container.warning("⚠️ requests returned 200 but NO race content. Switching to Selenium...")
         else:
             debug_container.write(f"❌ requests failed: status {res.status_code}")
     except Exception as e:
@@ -366,7 +375,7 @@ def get_html_content(url):
         
         driver = None
         try:
-            # パターンA: Streamlit Cloud標準のドライバ
+            # パターンA: Streamlit Cloud標準
             from selenium.webdriver.chrome.service import Service
             service = Service()
             driver = webdriver.Chrome(options=options, service=service)
@@ -374,10 +383,9 @@ def get_html_content(url):
         except Exception as e1:
             debug_container.warning(f"⚠️ Standard Driver Init Failed: {e1}")
             try:
-                # パターンB: webdriver_managerを使用 (救済措置)
+                # パターンB: webdriver_manager (救済措置)
                 from webdriver_manager.chrome import ChromeDriverManager
                 from selenium.webdriver.chrome.service import Service as ChromeService
-                debug_container.write("🔄 Trying webdriver_manager fallback...")
                 service = ChromeService(ChromeDriverManager().install())
                 driver = webdriver.Chrome(options=options, service=service)
                 debug_container.write("✅ Driver initialized (Fallback)")
@@ -388,13 +396,18 @@ def get_html_content(url):
         if driver:
             try:
                 driver.get(url)
-                time.sleep(1) # 読み込み待ち
+                time.sleep(2) # 読み込み待ちを少し長めに
                 html = driver.page_source
-                debug_container.write(f"✅ Selenium Get success (Length: {len(html)})")
-                return html
-            except Exception as e_get:
-                debug_container.error(f"❌ Driver Get Error: {e_get}")
-                return None
+                
+                # Seleniumでも中身をチェック
+                if "RaceTable" in html or "Shutuba_Table" in html or "RaceList_Box" in html:
+                    debug_container.write(f"✅ Selenium Get success (Valid content)")
+                    return html
+                else:
+                    debug_container.error("❌ Selenium also failed to get valid content.")
+                    # デバッグ用にHTMLの一部を表示（原因特定用）
+                    debug_container.code(html[:1000]) 
+                    return None
             finally:
                 driver.quit()
         
@@ -1701,3 +1714,4 @@ def main():
 if __name__ == '__main__':
 
     main()
+
