@@ -333,7 +333,7 @@ def detect_grade_from_icon(element):
     return None
 
 # ---------------------------------------------------------
-# 修正版 get_html_content (中身チェック機能付き)
+# 修正版 get_html_content (判定厳格化バージョン)
 # ---------------------------------------------------------
 def get_html_content(url):
     debug_container = st.expander(f"🕵️‍♂️ 通信デバッグログ: {url[-20:]}", expanded=False)
@@ -351,12 +351,13 @@ def get_html_content(url):
                     break
                 except: continue
             
-            # ★ここが修正点: 中身に重要なキーワードがあるかチェック！
-            if html_content and ("RaceTable" in html_content or "Shutuba_Table" in html_content or "RaceList_Box" in html_content):
-                debug_container.write("✅ requests success (Valid content found)")
+            # ★修正点: 「HorseList」(馬のリスト) または 「Umaban」(馬番) があるかチェック
+            # これらがなければ、表枠だけで中身がないと判断してSeleniumへ
+            if html_content and ("HorseList" in html_content or "Umaban" in html_content):
+                debug_container.write("✅ requests success (Horse data found)")
                 return html_content
             else:
-                debug_container.warning("⚠️ requests returned 200 but NO race content. Switching to Selenium...")
+                debug_container.warning("⚠️ requests returned 200 but NO HORSE DATA. Switching to Selenium...")
         else:
             debug_container.write(f"❌ requests failed: status {res.status_code}")
     except Exception as e:
@@ -396,17 +397,15 @@ def get_html_content(url):
         if driver:
             try:
                 driver.get(url)
-                time.sleep(2) # 読み込み待ちを少し長めに
+                time.sleep(2) # 読み込み待ち
                 html = driver.page_source
                 
                 # Seleniumでも中身をチェック
-                if "RaceTable" in html or "Shutuba_Table" in html or "RaceList_Box" in html:
+                if "HorseList" in html or "Umaban" in html:
                     debug_container.write(f"✅ Selenium Get success (Valid content)")
                     return html
                 else:
-                    debug_container.error("❌ Selenium also failed to get valid content.")
-                    # デバッグ用にHTMLの一部を表示（原因特定用）
-                    debug_container.code(html[:1000]) 
+                    debug_container.error("❌ Selenium also failed to get horse data.")
                     return None
             finally:
                 driver.quit()
@@ -1714,4 +1713,5 @@ def main():
 if __name__ == '__main__':
 
     main()
+
 
