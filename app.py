@@ -233,12 +233,12 @@ def load_custom_css():
 MODEL_PATH = 'models/lgbm_pace_tuned.pkl'
 ENCODER_PATH = 'models/pace_encoders.pkl'
 
-# # クラウドDB接続先
-# if "DATABASE_URL" in st.secrets:
-#     DATABASE_URL = st.secrets["DATABASE_URL"]
-# else:
+# クラウドDB接続先
+if "DATABASE_URL" in st.secrets:
+    DATABASE_URL = st.secrets["DATABASE_URL"]
+else:
 # 開発用フォールバック
-DATABASE_URL = 'postgresql://neondb_owner:npg_4HTcfQoa0Suq@ep-empty-fog-a1m9gve8-pooler.ap-southeast-1.aws.neon.tech/keiba_db?sslmode=require&channel_binding=require'
+    DATABASE_URL = 'postgresql://neondb_owner:npg_4HTcfQoa0Suq@ep-empty-fog-a1m9gve8-pooler.ap-southeast-1.aws.neon.tech/keiba_db?sslmode=require&channel_binding=require'
 
 COURSE_START_TO_CORNER = {
     ('東京', '芝', 1400): 350, ('東京', '芝', 1600): 550, ('東京', '芝', 1800): 150, 
