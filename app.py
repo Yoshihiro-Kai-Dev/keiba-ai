@@ -332,23 +332,61 @@ def detect_grade_from_icon(element):
     if 'Icon_GradeType5' in c: return 'OP'
     return None
 
+# ---------------------------------------------------------
+# 【完成版】ハイブリッド取得関数
+# requestsで高速取得し、ダメなら自動でSelenium(ブラウザ)に切り替える
+# ---------------------------------------------------------
 def get_html_content(url):
+    # 中身がちゃんとあるか判定する関数
+    def is_valid_html(html):
+        if not html: return False
+        # レース一覧系 or 出馬表系のキーワードが含まれているか
+        keywords = ["RaceList", "RaceTop", "HorseList", "Umaban", "Kaisai", "RaceTable"]
+        return any(k in html for k in keywords)
+
+    # 1. まずは高速な requests でトライ
     try:
-        # Selenium options for Streamlit Cloud
+        res = requests.get(url, headers=HEADERS, timeout=5)
+        if res.status_code == 200:
+            for enc in ['euc-jp', 'utf-8', 'shift_jis', 'cp932']:
+                try: 
+                    decoded = res.content.decode(enc)
+                    # 中身が空っぽ(ダミー)じゃないか確認
+                    if is_valid_html(decoded):
+                        return decoded
+                except: continue
+    except: pass # requests失敗時は何もしないで次へ
+
+    # 2. ダメなら Selenium (Chrome) を起動して確実に取る
+    try:
         options = Options()
         options.add_argument('--headless')
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--disable-gpu')
+        options.add_argument('--window-size=1920,1080')
+        options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
         
-        # Try requests first as it's faster
-        res = requests.get(url, headers=HEADERS, timeout=8)
-        if res.status_code == 200:
-            for enc in ['euc-jp', 'utf-8', 'shift_jis', 'cp932']:
-                try: return res.content.decode(enc)
-                except: continue
+        # Streamlit Cloud環境用のドライバ設定
+        # (packages.txtでchromiumを入れているので標準Serviceで動くはずです)
+        from selenium.webdriver.chrome.service import Service
+        service = Service()
+        driver = webdriver.Chrome(options=options, service=service)
+        
+        try:
+            driver.get(url)
+            time.sleep(2) # 読み込み待ち
+            html = driver.page_source
+            
+            # Seleniumでも一応中身チェック
+            if is_valid_html(html):
+                return html
+            else:
+                return None
+        finally:
+            driver.quit()
+    except Exception:
         return None
-    except: return None
 
 def render_grade_badge_html(grade):
     cls = get_grade_class_name(grade)
