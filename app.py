@@ -333,20 +333,29 @@ def detect_grade_from_icon(element):
     return None
 
 # ---------------------------------------------------------
-# 修正版 get_html_content 関数
+# 診断機能付き get_html_content 関数
 # ---------------------------------------------------------
 def get_html_content(url):
-    # 1. まずは高速な requests でトライ
+    # 画面上にデバッグ情報を表示するためのコンテナ（通常は閉じておく）
+    debug_container = st.expander(f"🕵️‍♂️ 通信デバッグログ: {url[-20:]}", expanded=False)
+    
+    # 1. requests での取得を試みる
     try:
+        debug_container.write("Attempting requests...")
         res = requests.get(url, headers=HEADERS, timeout=5)
         if res.status_code == 200:
+            debug_container.write("✅ requests success")
             for enc in ['euc-jp', 'utf-8', 'shift_jis', 'cp932']:
                 try: return res.content.decode(enc)
                 except: continue
-    except: pass
+        else:
+            debug_container.write(f"❌ requests failed: status {res.status_code}")
+    except Exception as e:
+        debug_container.write(f"❌ requests error: {e}")
 
-    # 2. ダメなら Selenium (Chrome) を起動して取得
+    # 2. Selenium (Chrome) での取得を試みる
     try:
+        debug_container.write("Attempting Selenium...")
         options = Options()
         options.add_argument('--headless')
         options.add_argument('--no-sandbox')
@@ -355,18 +364,42 @@ def get_html_content(url):
         options.add_argument('--window-size=1920,1080')
         options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
         
-        # Streamlit Cloud環境用のドライバ設定
-        service = webdriver.chrome.service.Service()
-        driver = webdriver.Chrome(options=options, service=service)
-        
+        driver = None
         try:
-            driver.get(url)
-            time.sleep(1) # 読み込み待ち
-            html = driver.page_source
-            return html
-        finally:
-            driver.quit()
+            # パターンA: Streamlit Cloud標準のドライバ
+            from selenium.webdriver.chrome.service import Service
+            service = Service()
+            driver = webdriver.Chrome(options=options, service=service)
+            debug_container.write("✅ Driver initialized (Standard)")
+        except Exception as e1:
+            debug_container.warning(f"⚠️ Standard Driver Init Failed: {e1}")
+            try:
+                # パターンB: webdriver_managerを使用 (救済措置)
+                from webdriver_manager.chrome import ChromeDriverManager
+                from selenium.webdriver.chrome.service import Service as ChromeService
+                debug_container.write("🔄 Trying webdriver_manager fallback...")
+                service = ChromeService(ChromeDriverManager().install())
+                driver = webdriver.Chrome(options=options, service=service)
+                debug_container.write("✅ Driver initialized (Fallback)")
+            except Exception as e2:
+                debug_container.error(f"❌ Fallback Failed: {e2}")
+                return None
+
+        if driver:
+            try:
+                driver.get(url)
+                time.sleep(1) # 読み込み待ち
+                html = driver.page_source
+                debug_container.write(f"✅ Selenium Get success (Length: {len(html)})")
+                return html
+            except Exception as e_get:
+                debug_container.error(f"❌ Driver Get Error: {e_get}")
+                return None
+            finally:
+                driver.quit()
+        
     except Exception as e:
+        debug_container.error(f"❌ Critical Selenium error: {e}")
         return None
 
 def render_grade_badge_html(grade):
@@ -1666,4 +1699,5 @@ def main():
             else: st.error("レース情報の取得に失敗しました")
 
 if __name__ == '__main__':
+
     main()
