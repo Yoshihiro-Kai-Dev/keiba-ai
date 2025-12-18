@@ -12,6 +12,9 @@ import base64
 import os
 import numpy as np
 import concurrent.futures
+import threading 
+from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
+import queue
 import streamlit.components.v1 as components
 from bs4 import BeautifulSoup
 from sqlalchemy import create_engine
@@ -235,11 +238,15 @@ def load_custom_css():
 MODEL_PATH = 'models/lgbm_pace_tuned.pkl'
 ENCODER_PATH = 'models/pace_encoders.pkl'
 
-# クラウドDB接続先
-if "DATABASE_URL" in st.secrets:
-    DATABASE_URL = st.secrets["DATABASE_URL"]
-else:
-# 開発用フォールバック
+# クラウドDB接続先 (ローカル実行時のエラー回避対応)
+try:
+    if "DATABASE_URL" in st.secrets:
+        DATABASE_URL = st.secrets["DATABASE_URL"]
+    else:
+        # secretsファイルはあるがキーがない場合
+        DATABASE_URL = 'postgresql://neondb_owner:npg_4HTcfQoa0Suq@ep-empty-fog-a1m9gve8-pooler.ap-southeast-1.aws.neon.tech/keiba_db?sslmode=require&channel_binding=require'
+except:
+    # ローカルで secrets.toml 自体がない場合（今回のエラーはここで吸収）
     DATABASE_URL = 'postgresql://neondb_owner:npg_4HTcfQoa0Suq@ep-empty-fog-a1m9gve8-pooler.ap-southeast-1.aws.neon.tech/keiba_db?sslmode=require&channel_binding=require'
 
 COURSE_START_TO_CORNER = {
@@ -464,12 +471,27 @@ def render_hero_card(row):
 
 def render_ai_list_item(row, overlap_badges):
     rating = min(99, int(row.get('AI Rating', 50)))
+    
+    # ★追加: 購入対象(Bet Target)なら強調表示するためのフラグ確認
+    is_bet = row.get('is_bet_target', False)
+    
     badges_html = ""
+    # ★追加: 購入対象なら「BUY」バッジを先頭に追加
+    if is_bet:
+        badges_html += '<span class="strategy-badge" style="background:#ffd700; color:#000; border:2px solid #000; font-weight:900; font-size:0.85rem;">🎯 BUY</span> '
+
     if "pace" in overlap_badges: badges_html += '<span class="strategy-badge" style="background:#fce7f3; color:#be185d;">🚀 展開神</span>'
     if "ai" in overlap_badges: badges_html += '<span class="strategy-badge" style="background:#fffbeb; color:#d97706;">🦄 鉄板</span>'
     if "hole" in overlap_badges: badges_html += '<span class="strategy-badge" style="background:#fee2e2; color:#b91c1c;">💣 穴馬</span>'
     
-    fire_class = "fire" if rating >= 80 else ""
+    # ★変更: 購入対象なら枠線を赤く太くし、背景色を微調整
+    if is_bet:
+        fire_class = "fire" # 強制的に炎エフェクト有効
+        card_style = "border: 3px solid #ef4444 !important; background-color: #fffaf0 !important; transform: scale(1.01); box-shadow: 0 8px 16px rgba(239, 68, 68, 0.15) !important;"
+    else:
+        fire_class = "fire" if rating >= 80 else ""
+        card_style = ""
+
     bar_color = "linear-gradient(135deg, #ef4444 0%, #f59e0b 100%)" if rating >= 80 else "var(--primary-gradient)"
     boost_html = ""
     reason_str = row.get('BoostReason', '')
@@ -489,8 +511,9 @@ def render_ai_list_item(row, overlap_badges):
             
             boost_html += f'<span class="boost-badge {cls}">{r}</span>'
 
+    # ★変更: style属性を追加して強調デザインを適用
     html = f"""
-    <div class="ai-list-card {fire_class}">
+    <div class="ai-list-card {fire_class}" style="{card_style}">
         <div class="ai-card-badges">{badges_html}</div>
         <div style="font-size:1.1rem; font-weight:bold; color:var(--text-main); margin-bottom:4px;">
             <span style="opacity:0.6; font-size:0.8em;">#{int(row['馬番'])}</span> {row['馬名']}
@@ -1272,16 +1295,36 @@ def process_one_race(race, model, encoders, engine, driver=None):
             
             # 結果サマリー
             top_ai = res.iloc[0]
-            pace_hits = res[res['判定'] == "🚀 展開の神"]
-            hole_hits = res[res['判定_穴'] == "💣 穴馬の極意"]
+            
+            # ★変更: 抽出された馬リストの中で、最もAIスコアが高い馬を「購入対象」としてマークする
+            
+            # 1. 展開の神 (スコア順にソートして先頭1頭をBUY対象にする)
+            pace_hits = res[res['判定'] == "🚀 展開の神"].copy()
+            if not pace_hits.empty:
+                pace_hits = pace_hits.sort_values(['AIスコア', 'raw_preds'], ascending=[False, False])
+                pace_hits['is_bet_target'] = False
+                # 先頭行(最高スコア)をTrueに
+                pace_hits.iat[0, pace_hits.columns.get_loc('is_bet_target')] = True
+            
+            # 2. 穴馬 (同様にソートして先頭1頭をBUY対象にする)
+            hole_hits = res[res['判定_穴'] == "💣 穴馬の極意"].copy()
+            if not hole_hits.empty:
+                hole_hits = hole_hits.sort_values(['AIスコア', 'raw_preds'], ascending=[False, False])
+                hole_hits['is_bet_target'] = False
+                hole_hits.iat[0, hole_hits.columns.get_loc('is_bet_target')] = True
             
             try: top_odds = float(str(top_ai['オッズ']).replace('-','0'))
             except: top_odds = 0
             is_ai_target = (3.0 <= top_odds <= 30.0)
             
-            # バッジ処理
+            # 3. 鉄板 (条件を満たせばTrue)
+            ai_hit_df = res.iloc[[0]].copy()
+            ai_hit_df['is_bet_target'] = is_ai_target
+
+            # バッジ処理 (元のresに対して行う)
             res['overlap_badges'] = [[] for _ in range(len(res))]
             if is_ai_target: res.at[res.index[0], 'overlap_badges'].append("ai")
+            # 注意: ここでのループは元のresに対するものなので、マーク済みDFとは別管理
             for idx in pace_hits.index: res.at[idx, 'overlap_badges'].append("pace")
             for idx in hole_hits.index: res.at[idx, 'overlap_badges'].append("hole")
 
@@ -1293,8 +1336,9 @@ def process_one_race(race, model, encoders, engine, driver=None):
                 'status': 'success',
                 'race': race,
                 'df': res,
-                'pace_hits': pace_hits,
-                'hole_hits': hole_hits,
+                'pace_hits': pace_hits, # マーク付きDFを返す
+                'hole_hits': hole_hits, # マーク付きDFを返す
+                'ai_hit_df': ai_hit_df, # マーク付きDFを返す
                 'is_ai_target': is_ai_target,
                 'top_ai': top_ai,
                 'ranks': ranks,
@@ -1305,6 +1349,50 @@ def process_one_race(race, model, encoders, engine, driver=None):
         return {'status': 'empty', 'race': race}
     except Exception as e:
         return {'status': 'error', 'race': race, 'error': str(e)}
+
+# ---------------------------------------------------------
+# 新規追加: レースの塊(チャンク)を1つのブラウザで連続処理する関数
+# ---------------------------------------------------------
+# ---------------------------------------------------------
+# 新規追加: レースの塊(チャンク)を1つのブラウザで連続処理する関数
+# ---------------------------------------------------------
+# ---------------------------------------------------------
+# 新規追加: レースの塊(チャンク)を1つのブラウザで連続処理する関数
+# ---------------------------------------------------------
+def process_race_chunk(chunk, model, encoders, engine, ctx, result_queue): # ★変更: result_queue を追加
+    # 別スレッドでもStreamlitの機能が使えるように設定
+    if ctx: add_script_run_ctx(threading.current_thread(), ctx)
+
+    # resultsリストは廃止し、随時 queue に入れる
+    # スレッドごとに専用のブラウザを起動
+    options = Options()
+    options.add_argument('--headless')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--window-size=1920,1080')
+    options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+    
+    driver = None
+    try:
+        from selenium.webdriver.chrome.service import Service
+        service = Service()
+        driver = webdriver.Chrome(options=options, service=service)
+        
+        # 起動したブラウザを使い回して、担当分のレースを全て処理
+        for race in chunk:
+            res = process_one_race(race, model, encoders, engine, driver=driver)
+            result_queue.put(res) # ★変更: 処理が終わったら即座にキューへ入れる
+            
+    except Exception as e:
+        # エラー時もキューに入れてカウントを進める
+        for race in chunk:
+            result_queue.put({'status': 'error', 'race': race, 'error': str(e)}) # ★変更
+    finally:
+        if driver:
+            driver.quit()
+    
+    return True # 戻り値は使わないので適当に
 
 def scan_races(target_date, race_list, model, encoders, engine):
     if 'report_stats' in st.session_state and st.session_state.report_stats:
@@ -1320,78 +1408,96 @@ def scan_races(target_date, race_list, model, encoders, engine):
     
     progress_bar = st.progress(0)
     status_text = st.empty()
+    status_text.text("🚀 Initializing parallel workers...")
+
+    # 新馬・障害を除外したリストを作成
+    target_races = [r for r in race_list if "新馬" not in r['label'] and "障害" not in r['label']]
+    total_races = len(target_races)
     
-    # ★修正: ブラウザを1つだけ起動して使い回す (Singleton)
-    options = Options()
-    options.add_argument('--headless')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--disable-gpu')
-    options.add_argument('--window-size=1920,1080')
-    options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-    
-    driver = None
-    try:
-        from selenium.webdriver.chrome.service import Service
-        service = Service()
-        driver = webdriver.Chrome(options=options, service=service)
-        status_text.text("🚀 Browser initialized. Starting scan...")
-    except Exception as e:
-        st.error(f"Browser Init Failed: {e}")
+    if total_races == 0:
+        status_text.text("No target races found.")
         return results
 
+    # リストを2分割する (クラウドのメモリ制限を考慮し、並列数は2とする)
+    num_workers = 2
+    chunks = [target_races[i::num_workers] for i in range(num_workers)]
+    
+    # メインスレッドのコンテキストを取得
     try:
-        # 新馬・障害を除外したリストを作成
-        target_races = [r for r in race_list if "新馬" not in r['label'] and "障害" not in r['label']]
-        total_races = len(target_races)
-        
-        for i, race in enumerate(target_races):
-            status_text.text(f"Scanning {i+1}/{total_races}: {race['label']}...")
-            
-            # 使い回しの driver を渡して処理
-            data = process_one_race(race, model, encoders, engine, driver=driver)
-            
-            if data['status'] == 'success':
-                res = data['df']
-                race_info = data['race']
-                
-                m_info = data['missing_info']
-                for j in m_info['jockey']: all_missing['jockey'].add(j)
-                for t in m_info['trainer']: all_missing['trainer'].add(t)
-                if 'trainer_debug' in m_info and not m_info['trainer_debug'].empty:
-                    trainer_debug_list.append(m_info['trainer_debug'])
-                
-                if not data['pace_hits'].empty: results['pace'].append({'race': race_info['label'], 'url': race_info['url'], 'hits': data['pace_hits'], 'grade': race_info['grade']})
-                if not data['hole_hits'].empty: results['hole'].append({'race': race_info['label'], 'url': race_info['url'], 'hits': data['hole_hits'], 'grade': race_info['grade']})
-                if data['is_ai_target']: results['ai'].append({'race': race_info['label'], 'url': race_info['url'], 'hits': res.iloc[[0]], 'grade': race_info['grade']})
-                
-                ranks = data['ranks']
-                win_p = data['win_p']
-                place_p = data['place_p']
-                
-                if ranks:
-                    def update(cat, horse):
-                        stats[cat]['bets'] += 1
-                        r = ranks.get(horse['馬番'], 99)
-                        if r == 1: stats[cat]['win_ret'] += win_p.get(horse['馬番'], 0)
-                        if r <= 3:
-                            stats[cat]['hit_count'] += 1
-                            stats[cat]['place_ret'] += place_p.get(horse['馬番'], 0)
-                            st.session_state.hits_details.append({"戦略": cat, "レース": race_info['label'], "馬名": horse['馬名'], "着順": r, "単勝": win_p.get(horse['馬番'], 0), "複勝": place_p.get(horse['馬番'], 0)})
+        ctx = get_script_run_ctx()
+    except:
+        ctx = None
 
-                    if data['is_ai_target']: update('ai', data['top_ai'])
-                    if not data['pace_hits'].empty: update('pace', data['pace_hits'].iloc[0])
+    # 結果受け取り用のキューを作成
+    result_queue = queue.Queue() # ★追加
+
+    # 並列実行
+    with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+        # 各チャンクを処理開始 (queueも渡す)
+        # ★変更: process_race_chunk の引数に result_queue を追加
+        futures = [executor.submit(process_race_chunk, chunk, model, encoders, engine, ctx, result_queue) for chunk in chunks]
+        
+        completed_races = 0
+        
+        # ★変更: レース数分だけループして、キューから結果を1つずつ取り出す
+        while completed_races < total_races:
+            try:
+                # キューから結果を取得 (タイムアウト付きで無限待ち回避)
+                data = result_queue.get(timeout=180) 
+                
+                completed_races += 1
+                status_text.text(f"Processing... ({completed_races}/{total_races} completed)")
+                
+                if data['status'] == 'success':
+                    res = data['df']
+                    race = data['race']
+                    
+                    # Missing Info集計
+                    m_info = data['missing_info']
+                    for j in m_info['jockey']: all_missing['jockey'].add(j)
+                    for t in m_info['trainer']: all_missing['trainer'].add(t)
+                    if 'trainer_debug' in m_info and not m_info['trainer_debug'].empty:
+                        trainer_debug_list.append(m_info['trainer_debug'])
+                    
+                    # 結果リストへの追加
+                    # ★変更: マーク付きのDF (pace_hits, hole_hits, ai_hit_df) を使用する
+                    if not data['pace_hits'].empty: 
+                        results['pace'].append({'race': race['label'], 'url': race['url'], 'hits': data['pace_hits'], 'grade': race['grade']})
+                    
                     if not data['hole_hits'].empty: 
-                        hole_sorted = data['hole_hits'].sort_values(['AIスコア', 'raw_preds'], ascending=[False, False])
-                        update('hole', hole_sorted.iloc[0])
+                        results['hole'].append({'race': race['label'], 'url': race['url'], 'hits': data['hole_hits'], 'grade': race['grade']})
+                    
+                    if data['is_ai_target']: 
+                        # ここも ai_hit_df を使う
+                        results['ai'].append({'race': race['label'], 'url': race['url'], 'hits': data['ai_hit_df'], 'grade': race['grade']})
+                    
+                    # 成績集計
+                    ranks = data['ranks']
+                    win_p = data['win_p']
+                    place_p = data['place_p']
+                    
+                    if ranks:
+                        def update(cat, horse):
+                            stats[cat]['bets'] += 1
+                            r = ranks.get(horse['馬番'], 99)
+                            if r == 1: stats[cat]['win_ret'] += win_p.get(horse['馬番'], 0)
+                            if r <= 3:
+                                stats[cat]['hit_count'] += 1
+                                stats[cat]['place_ret'] += place_p.get(horse['馬番'], 0)
+                                st.session_state.hits_details.append({"戦略": cat, "レース": race['label'], "馬名": horse['馬名'], "着順": r, "単勝": win_p.get(horse['馬番'], 0), "複勝": place_p.get(horse['馬番'], 0)})
+
+                        if data['is_ai_target']: update('ai', data['top_ai'])
+                        if not data['pace_hits'].empty: update('pace', data['pace_hits'].iloc[0])
+                        if not data['hole_hits'].empty: 
+                            hole_sorted = data['hole_hits'].sort_values(['AIスコア', 'raw_preds'], ascending=[False, False])
+                            update('hole', hole_sorted.iloc[0])
             
-            progress_bar.progress((i + 1) / total_races)
+                # プログレスバー更新 (1件ごとに進む)
+                progress_bar.progress(min(1.0, completed_races / total_races))
             
-    finally:
-        # 全レース終了後にブラウザを閉じる
-        if driver:
-            driver.quit()
-            status_text.text("Scan completed. Browser closed.")
+            except queue.Empty:
+                # 万が一タイムアウトしたらループを抜ける
+                break
     
     status_text.empty()
     progress_bar.empty()
@@ -1471,11 +1577,15 @@ def main():
                 current_race_list = get_race_list_by_date(target_date)
             
             if current_race_list:
+                # ★追加: 表示用に、スキャン対象(新馬・障害以外)の数をあらかじめ計算する
+                scan_targets = [r for r in current_race_list if "新馬" not in r['label'] and "障害" not in r['label']]
+                
                 st.session_state.race_list = current_race_list
                 st.session_state.report_stats = None 
                 st.session_state.scan_results = None
                 
-                with st.spinner(f"AIが全集中で予想中... (対象: {len(current_race_list)}レース)"):
+                # ★変更: len(current_race_list) ではなく len(scan_targets) を表示
+                with st.spinner(f"AIが全集中で予想中... (対象: {len(scan_targets)}レース)"):
                     results = scan_races(target_date, current_race_list, model, encoders, engine)
                     st.session_state.scan_results = results
                     st.session_state.view_mode = 'list'
