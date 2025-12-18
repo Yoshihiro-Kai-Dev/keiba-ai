@@ -107,11 +107,12 @@ def load_custom_css():
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             z-index: 0; pointer-events: none; opacity: 0.5; overflow: hidden;
         }}
-        .video-background iframe {{
-            width: 100vw; height: 56.25vw; 
-            min-height: 100vh; min-width: 177.77vh; 
+        /* ★修正: videoタグ用のCSS (object-fit:coverで全画面対応) */
+        .video-background video {{
+            width: 100%; height: 100%; 
             position: absolute; top: 50%; left: 50%;
             transform: translate(-50%, -50%);
+            object-fit: cover;
         }}
         .header-overlay {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: var(--header-gradient); mix-blend-mode: multiply; z-index: 1; opacity: 0.7; }}
         .header-content {{ position: relative; z-index: 2; animation: slideUpFade 1s ease-out; }}
@@ -375,7 +376,7 @@ def get_html_content(url):
         
         try:
             driver.get(url)
-            time.sleep(1) # 読み込み待ち
+            time.sleep(2) # 読み込み待ち
             html = driver.page_source
             
             # Seleniumでも一応中身チェック
@@ -1353,7 +1354,7 @@ def main():
     st.markdown(f"""
         <div class="header-container">
             <div class="video-background">
-                <iframe src="https://www.youtube.com/embed/{yt_id}?autoplay=1&mute=1&controls=0&loop=1&playlist={yt_id}&playsinline=1" frameborder="0" allow="autoplay; encrypted-media"></iframe>
+                <video src="{video_src}" autoplay loop muted playsinline></video>
             </div>
             <div class="header-overlay"></div>
             <div class="header-content">
