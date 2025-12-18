@@ -375,7 +375,7 @@ def get_html_content(url):
         
         try:
             driver.get(url)
-            time.sleep(2) # 読み込み待ち
+            time.sleep(1) # 読み込み待ち
             html = driver.page_source
             
             # Seleniumでも一応中身チェック
