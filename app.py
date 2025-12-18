@@ -332,87 +332,23 @@ def detect_grade_from_icon(element):
     if 'Icon_GradeType5' in c: return 'OP'
     return None
 
-# ---------------------------------------------------------
-# 修正版 get_html_content (判定厳格化バージョン)
-# ---------------------------------------------------------
 def get_html_content(url):
-    debug_container = st.expander(f"🕵️‍♂️ 通信デバッグログ: {url[-20:]}", expanded=False)
-    
-    # 1. requests での取得を試みる
     try:
-        debug_container.write("Attempting requests...")
-        res = requests.get(url, headers=HEADERS, timeout=5)
-        if res.status_code == 200:
-            # エンコーディング対応
-            html_content = None
-            for enc in ['euc-jp', 'utf-8', 'shift_jis', 'cp932']:
-                try: 
-                    html_content = res.content.decode(enc)
-                    break
-                except: continue
-            
-            # ★修正点: 「HorseList」(馬のリスト) または 「Umaban」(馬番) があるかチェック
-            # これらがなければ、表枠だけで中身がないと判断してSeleniumへ
-            if html_content and ("HorseList" in html_content or "Umaban" in html_content):
-                debug_container.write("✅ requests success (Horse data found)")
-                return html_content
-            else:
-                debug_container.warning("⚠️ requests returned 200 but NO HORSE DATA. Switching to Selenium...")
-        else:
-            debug_container.write(f"❌ requests failed: status {res.status_code}")
-    except Exception as e:
-        debug_container.write(f"❌ requests error: {e}")
-
-    # 2. Selenium (Chrome) での取得を試みる
-    try:
-        debug_container.write("Attempting Selenium...")
+        # Selenium options for Streamlit Cloud
         options = Options()
         options.add_argument('--headless')
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--disable-gpu')
-        options.add_argument('--window-size=1920,1080')
-        options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
         
-        driver = None
-        try:
-            # パターンA: Streamlit Cloud標準
-            from selenium.webdriver.chrome.service import Service
-            service = Service()
-            driver = webdriver.Chrome(options=options, service=service)
-            debug_container.write("✅ Driver initialized (Standard)")
-        except Exception as e1:
-            debug_container.warning(f"⚠️ Standard Driver Init Failed: {e1}")
-            try:
-                # パターンB: webdriver_manager (救済措置)
-                from webdriver_manager.chrome import ChromeDriverManager
-                from selenium.webdriver.chrome.service import Service as ChromeService
-                service = ChromeService(ChromeDriverManager().install())
-                driver = webdriver.Chrome(options=options, service=service)
-                debug_container.write("✅ Driver initialized (Fallback)")
-            except Exception as e2:
-                debug_container.error(f"❌ Fallback Failed: {e2}")
-                return None
-
-        if driver:
-            try:
-                driver.get(url)
-                time.sleep(2) # 読み込み待ち
-                html = driver.page_source
-                
-                # Seleniumでも中身をチェック
-                if "HorseList" in html or "Umaban" in html:
-                    debug_container.write(f"✅ Selenium Get success (Valid content)")
-                    return html
-                else:
-                    debug_container.error("❌ Selenium also failed to get horse data.")
-                    return None
-            finally:
-                driver.quit()
-        
-    except Exception as e:
-        debug_container.error(f"❌ Critical Selenium error: {e}")
+        # Try requests first as it's faster
+        res = requests.get(url, headers=HEADERS, timeout=8)
+        if res.status_code == 200:
+            for enc in ['euc-jp', 'utf-8', 'shift_jis', 'cp932']:
+                try: return res.content.decode(enc)
+                except: continue
         return None
+    except: return None
 
 def render_grade_badge_html(grade):
     cls = get_grade_class_name(grade)
@@ -1713,5 +1649,6 @@ def main():
 if __name__ == '__main__':
 
     main()
+
 
 
