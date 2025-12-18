@@ -11,3 +11,4 @@ webdriver-manager
 joblib
 tqdm
 lxml
+google-generativeai>=0.7.0

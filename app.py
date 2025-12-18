@@ -22,6 +22,77 @@ from sqlalchemy import text
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 
+import google.generativeai as genai
+
+# ★ secretsからキーを読み込むようにする
+if "GEMINI_API_KEY" in st.secrets:
+    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+else:
+    # secretsがない場合（ここにはキーを書かない！）
+    GEMINI_API_KEY = None 
+
+def generate_gemini_comment(row):
+    # キーが無い場合は早期リターン
+    if not GEMINI_API_KEY:
+        return "⚠️ APIキー設定が必要です (.streamlit/secrets.toml)"
+
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        
+        # ★最新モデルを指定
+        model = genai.GenerativeModel('gemini-2.5-flash')
+    except:
+        print("モデル一覧の取得に失敗しました")
+# --------------------------------------
+
+def generate_gemini_comment(row):
+    """
+    特徴量データを受け取り、Geminiに寸評を書かせる関数
+    """
+    # ★ APIキーの読み込み (secrets.toml推奨)
+    api_key = None
+    if "GEMINI_API_KEY" in st.secrets:
+        api_key = st.secrets["GEMINI_API_KEY"]
+    else:
+        # secretsがない場合のフォールバック
+        api_key = GEMINI_API_KEY 
+
+    if not api_key:
+        return "APIキーが設定されていません。"
+
+    try:
+        genai.configure(api_key=api_key)
+        
+        # ★★★ ここを修正しました (リストにあった最新モデルを指定) ★★★
+        model = genai.GenerativeModel('gemini-2.5-flash')
+
+        # プロンプトの作成
+        prompt = f"""
+        あなたはベテランの競馬予想AIです。以下の有力馬のデータに基づき、
+        「なぜこの馬が推奨できるのか」を、競馬ファンに響くように
+        150文字以内の「熱い寸評」でまとめてください。
+
+        【馬データ】
+        ・馬名: {row['馬名']}
+        ・騎手: {row['騎手']} (勝率: {row.get('jockey_win_rate', 0)*100:.1f}%)
+        ・調教師: {row['調教師']} (勝率: {row.get('trainer_win_rate', 0)*100:.1f}%)
+        ・AI信頼度: {row['AIスコア']*100:.1f}% (かなり高い)
+        ・近走3走平均着順: {row.get('recent_rank_avg', '不明')}位
+        ・脚質傾向: {"先行" if row.get('run_style_ratio', 0) > 0.5 else "差し・追込"}
+        ・父: {row.get('sire_name', '不明')}
+        
+        【出力ルール】
+        ・結論から書く。
+        ・数値の羅列ではなく、定性的な表現（「名手○○の手綱捌きに期待」「安定感抜群」など）に変える。
+        ・敬語は使わず、雑誌のコラムのような「だ・である」調で。
+        ・最後に必ず「自信あり！」のような一言を添える。
+        """
+
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"AI寸評生成エラー: {str(e)}"
+
 # ---------------------------------------------------------
 # 1. 設定 & ページ初期化
 # ---------------------------------------------------------
@@ -1796,7 +1867,49 @@ def main():
                     
                     if not res.empty:
                         top = res.iloc[0]
+                        
+                        # ★ ここでGeminiを呼び出す！
+                        with st.spinner("🦄 Geminiが寸評を執筆中..."):
+                            ai_comment = generate_gemini_comment(top)
+                        
+                        # Hero Cardの下にコメントを表示するエリアを追加
                         st.markdown(render_hero_card(top), unsafe_allow_html=True)
+                        
+                        # 寸評表示用のおしゃれなボックス
+                        st.markdown(f"""
+                        <div style="
+                            background: linear-gradient(135deg, #fdfbf7 0%, #fff 100%); 
+                            border: 2px solid #d4af37; 
+                            border-radius: 12px; 
+                            padding: 15px; 
+                            margin-bottom: 20px; 
+                            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+                            position: relative;
+                        ">
+                            <div style="
+                                position: absolute; 
+                                top: -12px; 
+                                left: 20px; 
+                                background: #d4af37; 
+                                color: white; 
+                                padding: 2px 10px; 
+                                border-radius: 4px; 
+                                font-weight: bold; 
+                                font-size: 0.8rem;
+                            ">
+                                ✨ Gemini's Eye
+                            </div>
+                            <div style="
+                                font-family: 'Hiragino Mincho ProN', serif; 
+                                font-size: 1.1rem; 
+                                color: #333; 
+                                line-height: 1.6;
+                                margin-top: 5px;
+                            ">
+                                {ai_comment}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
                         
                         pace_hits = res[res['判定'] == "🚀 展開の神"]
                         if not pace_hits.empty:
