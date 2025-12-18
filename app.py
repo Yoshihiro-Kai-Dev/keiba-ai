@@ -1353,7 +1353,7 @@ def main():
     st.markdown(f"""
         <div class="header-container">
             <div class="video-background">
-                <iframe src="https://www.youtube.com/embed/{yt_id}?autoplay=1&mute=1&controls=0&loop=1&playlist={yt_id}" frameborder="0" allow="autoplay; encrypted-media"></iframe>
+                <iframe src="https://www.youtube.com/embed/{yt_id}?autoplay=1&mute=1&controls=0&loop=1&playlist={yt_id}&playsinline=1" frameborder="0" allow="autoplay; encrypted-media"></iframe>
             </div>
             <div class="header-overlay"></div>
             <div class="header-content">
