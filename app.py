@@ -333,17 +333,24 @@ def detect_grade_from_icon(element):
     return None
 
 # ---------------------------------------------------------
-# 修正版 get_html_content (判定厳格化バージョン)
+# 修正版 get_html_content (一覧ページも許可するバージョン)
 # ---------------------------------------------------------
 def get_html_content(url):
     debug_container = st.expander(f"🕵️‍♂️ 通信デバッグログ: {url[-20:]}", expanded=False)
     
+    # 判定用キーワード（ここを広げました）
+    # HorseList/Umaban: 出馬表ページ用
+    # RaceList/RaceTop: レース一覧ページ用
+    def is_valid_html(html):
+        if not html: return False
+        keywords = ["HorseList", "Umaban", "RaceList", "RaceTop", "Kaisai"]
+        return any(k in html for k in keywords)
+
     # 1. requests での取得を試みる
     try:
         debug_container.write("Attempting requests...")
         res = requests.get(url, headers=HEADERS, timeout=5)
         if res.status_code == 200:
-            # エンコーディング対応
             html_content = None
             for enc in ['euc-jp', 'utf-8', 'shift_jis', 'cp932']:
                 try: 
@@ -351,13 +358,12 @@ def get_html_content(url):
                     break
                 except: continue
             
-            # ★修正点: 「HorseList」(馬のリスト) または 「Umaban」(馬番) があるかチェック
-            # これらがなければ、表枠だけで中身がないと判断してSeleniumへ
-            if html_content and ("HorseList" in html_content or "Umaban" in html_content):
-                debug_container.write("✅ requests success (Horse data found)")
+            # ★修正点: 判定ロジックに関数を使用
+            if is_valid_html(html_content):
+                debug_container.write("✅ requests success (Content validated)")
                 return html_content
             else:
-                debug_container.warning("⚠️ requests returned 200 but NO HORSE DATA. Switching to Selenium...")
+                debug_container.warning("⚠️ requests OK but content invalid. Switching to Selenium...")
         else:
             debug_container.write(f"❌ requests failed: status {res.status_code}")
     except Exception as e:
@@ -376,7 +382,6 @@ def get_html_content(url):
         
         driver = None
         try:
-            # パターンA: Streamlit Cloud標準
             from selenium.webdriver.chrome.service import Service
             service = Service()
             driver = webdriver.Chrome(options=options, service=service)
@@ -384,7 +389,6 @@ def get_html_content(url):
         except Exception as e1:
             debug_container.warning(f"⚠️ Standard Driver Init Failed: {e1}")
             try:
-                # パターンB: webdriver_manager (救済措置)
                 from webdriver_manager.chrome import ChromeDriverManager
                 from selenium.webdriver.chrome.service import Service as ChromeService
                 service = ChromeService(ChromeDriverManager().install())
@@ -397,15 +401,16 @@ def get_html_content(url):
         if driver:
             try:
                 driver.get(url)
-                time.sleep(2) # 読み込み待ち
+                time.sleep(2)
                 html = driver.page_source
                 
-                # Seleniumでも中身をチェック
-                if "HorseList" in html or "Umaban" in html:
-                    debug_container.write(f"✅ Selenium Get success (Valid content)")
+                # ★修正点: Seleniumでも同じ判定ロジックを使用
+                if is_valid_html(html):
+                    debug_container.write(f"✅ Selenium Get success (Content validated)")
                     return html
                 else:
-                    debug_container.error("❌ Selenium also failed to get horse data.")
+                    debug_container.error("❌ Selenium also failed validation.")
+                    debug_container.code(html[:1000]) # デバッグ用に先頭を表示
                     return None
             finally:
                 driver.quit()
