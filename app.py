@@ -338,7 +338,7 @@ def detect_grade_from_icon(element):
 # 【完成版】ハイブリッド取得関数
 # requestsで高速取得し、ダメなら自動でSelenium(ブラウザ)に切り替える
 # ---------------------------------------------------------
-def get_html_content(url):
+def get_html_content(url, driver=None):
     # 中身がちゃんとあるか判定する関数
     def is_valid_html(html):
         if not html: return False
@@ -361,19 +361,21 @@ def get_html_content(url):
 
     # 2. ダメなら Selenium (Chrome) を起動して確実に取る
     try:
-        options = Options()
-        options.add_argument('--headless')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument('--disable-gpu')
-        options.add_argument('--window-size=1920,1080')
-        options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-        
-        # Streamlit Cloud環境用のドライバ設定
-        # (packages.txtでchromiumを入れているので標準Serviceで動くはずです)
-        from selenium.webdriver.chrome.service import Service
-        service = Service()
-        driver = webdriver.Chrome(options=options, service=service)
+        # ドライバが渡されていない場合のみ、ここで新規作成・破棄を行う（単発利用）
+        local_driver = False
+        if driver is None:
+            local_driver = True
+            options = Options()
+            options.add_argument('--headless')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--window-size=1920,1080')
+            options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+            
+            from selenium.webdriver.chrome.service import Service
+            service = Service()
+            driver = webdriver.Chrome(options=options, service=service)
         
         try:
             driver.get(url)
@@ -386,7 +388,9 @@ def get_html_content(url):
             else:
                 return None
         finally:
-            driver.quit()
+            # 自分で作ったドライバなら閉じる。渡されたものなら閉じない。
+            if local_driver and driver:
+                driver.quit()
     except Exception:
         return None
 
@@ -681,9 +685,9 @@ def scrape_race_result(race_id):
         return (rank_map if rank_map else None), (win_map if win_map else None), (fukusho_map if fukusho_map else None), []
     except: return None, None, None, []
 
-def scrape_race_data(url):
+def scrape_race_data(url, driver=None):
     try:
-        content = get_html_content(url)
+        content = get_html_content(url, driver=driver)
         if not content: return None
         soup = BeautifulSoup(content, 'lxml')
         api_odds_map = {}
@@ -1259,10 +1263,10 @@ def predict_race(df, model_pack, encoders, _engine):
     
     return df.sort_values(['AIスコア', 'raw_preds'], ascending=[False, False]), df, X, diag_data, missing_info, trace_df
 
-def process_one_race(race, model, encoders, engine):
+def process_one_race(race, model, encoders, engine, driver=None):
     """並列処理用の単一レース処理関数"""
     try:
-        df = scrape_race_data(race['url'])
+        df = scrape_race_data(race['url'], driver=driver)
         if df is not None and not df.empty:
             res, _, _, _, missing_info, _ = predict_race(df, model, encoders, engine)
             
@@ -1317,57 +1321,77 @@ def scan_races(target_date, race_list, model, encoders, engine):
     progress_bar = st.progress(0)
     status_text = st.empty()
     
-    # 並列処理の設定 (max_workers=3程度がクラウド環境では安全かつ高速)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        futures = {executor.submit(process_one_race, race, model, encoders, engine): race for race in race_list if "新馬" not in race['label'] and "障害" not in race['label']}
-        
-        for i, future in enumerate(concurrent.futures.as_completed(futures)):
-            race_info = futures[future]
-            status_text.text(f"Scanning {race_info['label']}...")
-            
-            try:
-                data = future.result()
-                if data['status'] == 'success':
-                    res = data['df']
-                    race = data['race']
-                    
-                    # Missing Info集計
-                    m_info = data['missing_info']
-                    for j in m_info['jockey']: all_missing['jockey'].add(j)
-                    for t in m_info['trainer']: all_missing['trainer'].add(t)
-                    if 'trainer_debug' in m_info and not m_info['trainer_debug'].empty:
-                        trainer_debug_list.append(m_info['trainer_debug'])
-                    
-                    # 結果リストへの追加
-                    if not data['pace_hits'].empty: results['pace'].append({'race': race['label'], 'url': race['url'], 'hits': data['pace_hits'], 'grade': race['grade']})
-                    if not data['hole_hits'].empty: results['hole'].append({'race': race['label'], 'url': race['url'], 'hits': data['hole_hits'], 'grade': race['grade']})
-                    if data['is_ai_target']: results['ai'].append({'race': race['label'], 'url': race['url'], 'hits': res.iloc[[0]], 'grade': race['grade']})
-                    
-                    # 成績集計 (Backtest)
-                    ranks = data['ranks']
-                    win_p = data['win_p']
-                    place_p = data['place_p']
-                    
-                    if ranks:
-                        def update(cat, horse):
-                            stats[cat]['bets'] += 1
-                            r = ranks.get(horse['馬番'], 99)
-                            if r == 1: stats[cat]['win_ret'] += win_p.get(horse['馬番'], 0)
-                            if r <= 3:
-                                stats[cat]['hit_count'] += 1
-                                stats[cat]['place_ret'] += place_p.get(horse['馬番'], 0)
-                                st.session_state.hits_details.append({"戦略": cat, "レース": race['label'], "馬名": horse['馬名'], "着順": r, "単勝": win_p.get(horse['馬番'], 0), "複勝": place_p.get(horse['馬番'], 0)})
+    # ★修正: ブラウザを1つだけ起動して使い回す (Singleton)
+    options = Options()
+    options.add_argument('--headless')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--window-size=1920,1080')
+    options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+    
+    driver = None
+    try:
+        from selenium.webdriver.chrome.service import Service
+        service = Service()
+        driver = webdriver.Chrome(options=options, service=service)
+        status_text.text("🚀 Browser initialized. Starting scan...")
+    except Exception as e:
+        st.error(f"Browser Init Failed: {e}")
+        return results
 
-                        if data['is_ai_target']: update('ai', data['top_ai'])
-                        if not data['pace_hits'].empty: update('pace', data['pace_hits'].iloc[0])
-                        if not data['hole_hits'].empty: 
-                            hole_sorted = data['hole_hits'].sort_values(['AIスコア', 'raw_preds'], ascending=[False, False])
-                            update('hole', hole_sorted.iloc[0])
-                            
-            except Exception as e:
-                print(f"Error processing {race_info['label']}: {e}")
+    try:
+        # 新馬・障害を除外したリストを作成
+        target_races = [r for r in race_list if "新馬" not in r['label'] and "障害" not in r['label']]
+        total_races = len(target_races)
+        
+        for i, race in enumerate(target_races):
+            status_text.text(f"Scanning {i+1}/{total_races}: {race['label']}...")
             
-            progress_bar.progress((i + 1) / len(futures))
+            # 使い回しの driver を渡して処理
+            data = process_one_race(race, model, encoders, engine, driver=driver)
+            
+            if data['status'] == 'success':
+                res = data['df']
+                race_info = data['race']
+                
+                m_info = data['missing_info']
+                for j in m_info['jockey']: all_missing['jockey'].add(j)
+                for t in m_info['trainer']: all_missing['trainer'].add(t)
+                if 'trainer_debug' in m_info and not m_info['trainer_debug'].empty:
+                    trainer_debug_list.append(m_info['trainer_debug'])
+                
+                if not data['pace_hits'].empty: results['pace'].append({'race': race_info['label'], 'url': race_info['url'], 'hits': data['pace_hits'], 'grade': race_info['grade']})
+                if not data['hole_hits'].empty: results['hole'].append({'race': race_info['label'], 'url': race_info['url'], 'hits': data['hole_hits'], 'grade': race_info['grade']})
+                if data['is_ai_target']: results['ai'].append({'race': race_info['label'], 'url': race_info['url'], 'hits': res.iloc[[0]], 'grade': race_info['grade']})
+                
+                ranks = data['ranks']
+                win_p = data['win_p']
+                place_p = data['place_p']
+                
+                if ranks:
+                    def update(cat, horse):
+                        stats[cat]['bets'] += 1
+                        r = ranks.get(horse['馬番'], 99)
+                        if r == 1: stats[cat]['win_ret'] += win_p.get(horse['馬番'], 0)
+                        if r <= 3:
+                            stats[cat]['hit_count'] += 1
+                            stats[cat]['place_ret'] += place_p.get(horse['馬番'], 0)
+                            st.session_state.hits_details.append({"戦略": cat, "レース": race_info['label'], "馬名": horse['馬名'], "着順": r, "単勝": win_p.get(horse['馬番'], 0), "複勝": place_p.get(horse['馬番'], 0)})
+
+                    if data['is_ai_target']: update('ai', data['top_ai'])
+                    if not data['pace_hits'].empty: update('pace', data['pace_hits'].iloc[0])
+                    if not data['hole_hits'].empty: 
+                        hole_sorted = data['hole_hits'].sort_values(['AIスコア', 'raw_preds'], ascending=[False, False])
+                        update('hole', hole_sorted.iloc[0])
+            
+            progress_bar.progress((i + 1) / total_races)
+            
+    finally:
+        # 全レース終了後にブラウザを閉じる
+        if driver:
+            driver.quit()
+            status_text.text("Scan completed. Browser closed.")
     
     status_text.empty()
     progress_bar.empty()
