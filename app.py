@@ -11,6 +11,7 @@ import random
 import base64
 import os
 import numpy as np
+import concurrent.futures
 import streamlit.components.v1 as components
 from bs4 import BeautifulSoup
 from sqlalchemy import create_engine
@@ -107,7 +108,7 @@ def load_custom_css():
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             z-index: 0; pointer-events: none; opacity: 0.5; overflow: hidden;
         }}
-        /* ★修正: videoタグ用のCSS (object-fit:coverで全画面対応) */
+        /* videoタグ用のCSS (object-fit:coverで全画面対応) */
         .video-background video {{
             width: 100%; height: 100%; 
             position: absolute; top: 50%; left: 50%;
@@ -787,10 +788,11 @@ def scrape_race_data(url):
         return pd.DataFrame(data_list) if data_list else None
     except: return None
 
-def resolve_jockey_names(engine, target_jockeys):
+@st.cache_data(ttl=3600)
+def resolve_jockey_names(_engine, target_jockeys):
     try: 
         if 'db_jockeys' not in st.session_state:
-            st.session_state.db_jockeys = pd.read_sql('SELECT DISTINCT "騎手" FROM raw_race_results', engine)['騎手'].dropna().unique().tolist()
+            st.session_state.db_jockeys = pd.read_sql('SELECT DISTINCT "騎手" FROM raw_race_results', _engine)['騎手'].dropna().unique().tolist()
         db_jockeys = st.session_state.db_jockeys
     except: return {}, []
     mapping = {}
@@ -804,11 +806,11 @@ def resolve_jockey_names(engine, target_jockeys):
         missing.append(target); mapping[target] = target
     return mapping, missing
 
-# ★修正: 調教師名マッチング (Core Name Check + Comment Output)
-def resolve_trainer_names(engine, target_trainers):
+@st.cache_data(ttl=3600)
+def resolve_trainer_names(_engine, target_trainers):
     try: 
         if 'db_trainers' not in st.session_state:
-            st.session_state.db_trainers = pd.read_sql('SELECT DISTINCT "調教師" FROM raw_race_results', engine)['調教師'].dropna().unique().tolist()
+            st.session_state.db_trainers = pd.read_sql('SELECT DISTINCT "調教師" FROM raw_race_results', _engine)['調教師'].dropna().unique().tolist()
         db_trainers = st.session_state.db_trainers
         
         db_map_clean = {}
@@ -878,7 +880,8 @@ def process_passage_rank(passage):
     try: return int(passage.split('-')[0])
     except: return np.nan
 
-def calc_horse_history(engine, horse_names, target_date):
+@st.cache_data(ttl=600)
+def calc_horse_history(_engine, horse_names, target_date):
     clean_names = [n.replace(" ", "").replace("　", "") for n in horse_names]
     names_str = "', '".join([n.replace("'", "''") for n in clean_names])
     
@@ -893,7 +896,7 @@ def calc_horse_history(engine, horse_names, target_date):
     debug_info = {"sql": query}
     
     try:
-        hist_df = pd.read_sql(query, engine)
+        hist_df = pd.read_sql(query, _engine)
         hist_df['date'] = pd.to_datetime(hist_df['date'])
         hist_df['着順'] = pd.to_numeric(hist_df['着順'], errors='coerce')
         hist_df['上り'] = pd.to_numeric(hist_df['上り'], errors='coerce')
@@ -963,15 +966,15 @@ def calc_horse_history(engine, horse_names, target_date):
     except Exception as e:
         return pd.DataFrame(), {'error': str(e)}
 
-def predict_race(df, model_pack, encoders, engine):
+def predict_race(df, model_pack, encoders, _engine):
     model = model_pack['model']
     calibrator = model_pack['calibrator']
     feature_cols = model_pack['features']
 
-    j_map, missing_j = resolve_jockey_names(engine, df['騎手'].unique().tolist())
+    j_map, missing_j = resolve_jockey_names(_engine, df['騎手'].unique().tolist())
     df['騎手_db'] = df['騎手'].map(j_map)
     # 修正: 戻り値変更に対応
-    t_map, missing_t, t_debug = resolve_trainer_names(engine, df['調教師'].unique().tolist())
+    t_map, missing_t, t_debug = resolve_trainer_names(_engine, df['調教師'].unique().tolist())
     df['調教師_db'] = df['調教師'].map(t_map)
     
     missing_info = {'jockey': missing_j, 'trainer': missing_t, 'trainer_debug': t_debug}
@@ -988,8 +991,8 @@ def predict_race(df, model_pack, encoders, engine):
     }
     
     try:
-        j_stats = pd.read_sql('SELECT "騎手", AVG(CASE WHEN "着順"=\'1\' THEN 1.0 ELSE 0.0 END) as jockey_win_rate, AVG(CASE WHEN "着順"<=\'2\' THEN 1.0 ELSE 0.0 END) as jockey_rentai_rate, AVG(CASE WHEN "着順"<=\'2\' THEN 1.0 ELSE 0.0 END) as jockey_course_rentai_rate FROM raw_race_results GROUP BY "騎手"', engine)
-        t_stats = pd.read_sql('SELECT "調教師", AVG(CASE WHEN "着順"=\'1\' THEN 1.0 ELSE 0.0 END) as trainer_win_rate FROM raw_race_results GROUP BY "調教師"', engine)
+        j_stats = pd.read_sql('SELECT "騎手", AVG(CASE WHEN "着順"=\'1\' THEN 1.0 ELSE 0.0 END) as jockey_win_rate, AVG(CASE WHEN "着順"<=\'2\' THEN 1.0 ELSE 0.0 END) as jockey_rentai_rate, AVG(CASE WHEN "着順"<=\'2\' THEN 1.0 ELSE 0.0 END) as jockey_course_rentai_rate FROM raw_race_results GROUP BY "騎手"', _engine)
+        t_stats = pd.read_sql('SELECT "調教師", AVG(CASE WHEN "着順"=\'1\' THEN 1.0 ELSE 0.0 END) as trainer_win_rate FROM raw_race_results GROUP BY "調教師"', _engine)
         
         df = df.merge(j_stats, left_on='騎手_db', right_on='騎手', how='left', suffixes=('', '_j'))
         df = df.merge(t_stats, left_on='調教師_db', right_on='調教師', how='left', suffixes=('', '_t'))
@@ -999,7 +1002,7 @@ def predict_race(df, model_pack, encoders, engine):
     except: pass
 
     target_date = df['date'].iloc[0]
-    horse_stats, hist_debug = calc_horse_history(engine, df['馬名'].tolist(), target_date)
+    horse_stats, hist_debug = calc_horse_history(_engine, df['馬名'].tolist(), target_date)
     diag_data['sql_debug'] = hist_debug
     
     if not horse_stats.empty:
@@ -1021,7 +1024,7 @@ def predict_race(df, model_pack, encoders, engine):
           AND "コース区分" = '{c_type}'
         GROUP BY "馬名"
         """
-        crs_df = pd.read_sql(crs_query, engine)
+        crs_df = pd.read_sql(crs_query, _engine)
         if not crs_df.empty:
             crs_df['crs_rate'] = crs_df['top3'] / crs_df['runs']
             df = df.merge(crs_df[['馬名', 'crs_rate']], on='馬名', how='left')
@@ -1044,7 +1047,7 @@ def predict_race(df, model_pack, encoders, engine):
               AND "コース区分" = '{c_type}'
             GROUP BY "騎手"
             """
-            jc_df = pd.read_sql(jc_query, engine)
+            jc_df = pd.read_sql(jc_query, _engine)
             if not jc_df.empty:
                 df = df.merge(jc_df, left_on='騎手_db', right_on='騎手', how='left', suffixes=('', '_jc'))
     except: pass
@@ -1058,7 +1061,7 @@ def predict_race(df, model_pack, encoders, engine):
             WHERE "騎手" IN {j_str}
             GROUP BY "騎手", "調教師"
             """
-            tag_df = pd.read_sql(tag_query, engine)
+            tag_df = pd.read_sql(tag_query, _engine)
             if not tag_df.empty:
                 df = df.merge(tag_df, left_on=['騎手_db', '調教師_db'], right_on=['騎手', '調教師'], how='left', suffixes=('', '_tag'))
     except: pass
@@ -1073,7 +1076,7 @@ def predict_race(df, model_pack, encoders, engine):
           AND "距離" = '{int(df['距離'].iloc[0])}'
         GROUP BY "枠番"
         """
-        cw_df = pd.read_sql(cw_query, engine)
+        cw_df = pd.read_sql(cw_query, _engine)
         if not cw_df.empty:
             cw_df['枠番'] = pd.to_numeric(cw_df['枠番'], errors='coerce')
             df['枠番'] = pd.to_numeric(df['枠番'], errors='coerce')
@@ -1089,13 +1092,13 @@ def predict_race(df, model_pack, encoders, engine):
 
     try:
         names_str = "', '".join([n.replace("'", "''") for n in df['馬名'].tolist()])
-        ped_info = pd.read_sql(f"SELECT horse_name, sire_name, bms_name FROM horses WHERE horse_name IN ('{names_str}')", engine)
+        ped_info = pd.read_sql(f"SELECT horse_name, sire_name, bms_name FROM horses WHERE horse_name IN ('{names_str}')", _engine)
         if not ped_info.empty:
             ped_info = ped_info.drop_duplicates('horse_name')
             df = df.merge(ped_info, left_on='馬名', right_on='horse_name', how='left')
             
-            s_stats = pd.read_sql('SELECT sire_name, AVG(CASE WHEN "着順"=\'1\' THEN 1.0 ELSE 0.0 END) as sire_win_rate, AVG(CASE WHEN "着順"<=\'2\' THEN 1.0 ELSE 0.0 END) as sire_rentai_rate FROM raw_race_results r JOIN horses h ON r."馬名"=h.horse_name GROUP BY sire_name', engine)
-            b_stats = pd.read_sql('SELECT bms_name, AVG(CASE WHEN "着順"=\'1\' THEN 1.0 ELSE 0.0 END) as bms_win_rate, AVG(CASE WHEN "着順"<=\'2\' THEN 1.0 ELSE 0.0 END) as bms_rentai_rate FROM raw_race_results r JOIN horses h ON r."馬名"=h.horse_name GROUP BY bms_name', engine)
+            s_stats = pd.read_sql('SELECT sire_name, AVG(CASE WHEN "着順"=\'1\' THEN 1.0 ELSE 0.0 END) as sire_win_rate, AVG(CASE WHEN "着順"<=\'2\' THEN 1.0 ELSE 0.0 END) as sire_rentai_rate FROM raw_race_results r JOIN horses h ON r."馬名"=h.horse_name GROUP BY sire_name', _engine)
+            b_stats = pd.read_sql('SELECT bms_name, AVG(CASE WHEN "着順"=\'1\' THEN 1.0 ELSE 0.0 END) as bms_win_rate, AVG(CASE WHEN "着順"<=\'2\' THEN 1.0 ELSE 0.0 END) as bms_rentai_rate FROM raw_race_results r JOIN horses h ON r."馬名"=h.horse_name GROUP BY bms_name', _engine)
             df = df.merge(s_stats, on='sire_name', how='left')
             df = df.merge(b_stats, on='bms_name', how='left')
             
@@ -1108,7 +1111,7 @@ def predict_race(df, model_pack, encoders, engine):
                 WHERE h.sire_name IN {s_str} AND r."コース区分" = '{c_type}'
                 GROUP BY h.sire_name
                 """
-                surf_df = pd.read_sql(surf_query, engine)
+                surf_df = pd.read_sql(surf_query, _engine)
                 if not surf_df.empty:
                     df = df.merge(surf_df, on='sire_name', how='left')
             diag_data['pedigree'] = ped_info
@@ -1256,6 +1259,49 @@ def predict_race(df, model_pack, encoders, engine):
     
     return df.sort_values(['AIスコア', 'raw_preds'], ascending=[False, False]), df, X, diag_data, missing_info, trace_df
 
+def process_one_race(race, model, encoders, engine):
+    """並列処理用の単一レース処理関数"""
+    try:
+        df = scrape_race_data(race['url'])
+        if df is not None and not df.empty:
+            res, _, _, _, missing_info, _ = predict_race(df, model, encoders, engine)
+            
+            # 結果サマリー
+            top_ai = res.iloc[0]
+            pace_hits = res[res['判定'] == "🚀 展開の神"]
+            hole_hits = res[res['判定_穴'] == "💣 穴馬の極意"]
+            
+            try: top_odds = float(str(top_ai['オッズ']).replace('-','0'))
+            except: top_odds = 0
+            is_ai_target = (3.0 <= top_odds <= 30.0)
+            
+            # バッジ処理
+            res['overlap_badges'] = [[] for _ in range(len(res))]
+            if is_ai_target: res.at[res.index[0], 'overlap_badges'].append("ai")
+            for idx in pace_hits.index: res.at[idx, 'overlap_badges'].append("pace")
+            for idx in hole_hits.index: res.at[idx, 'overlap_badges'].append("hole")
+
+            # 成績集計用データ
+            race_id = df.iloc[0]['race_id']
+            ranks, win_p, place_p, _ = scrape_race_result(race_id)
+            
+            return {
+                'status': 'success',
+                'race': race,
+                'df': res,
+                'pace_hits': pace_hits,
+                'hole_hits': hole_hits,
+                'is_ai_target': is_ai_target,
+                'top_ai': top_ai,
+                'ranks': ranks,
+                'win_p': win_p,
+                'place_p': place_p,
+                'missing_info': missing_info
+            }
+        return {'status': 'empty', 'race': race}
+    except Exception as e:
+        return {'status': 'error', 'race': race, 'error': str(e)}
+
 def scan_races(target_date, race_list, model, encoders, engine):
     if 'report_stats' in st.session_state and st.session_state.report_stats:
         stats = st.session_state.report_stats
@@ -1271,62 +1317,57 @@ def scan_races(target_date, race_list, model, encoders, engine):
     progress_bar = st.progress(0)
     status_text = st.empty()
     
-    for i, race in enumerate(race_list):
-        if "新馬" in race['label'] or "障害" in race['label']: continue
-        status_text.text(f"Scanning {race['label']}...")
-        df = scrape_race_data(race['url'])
+    # 並列処理の設定 (max_workers=3程度がクラウド環境では安全かつ高速)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        futures = {executor.submit(process_one_race, race, model, encoders, engine): race for race in race_list if "新馬" not in race['label'] and "障害" not in race['label']}
         
-        if df is not None and not df.empty:
-            res, _, _, _, missing_info, _ = predict_race(df, model, encoders, engine)
+        for i, future in enumerate(concurrent.futures.as_completed(futures)):
+            race_info = futures[future]
+            status_text.text(f"Scanning {race_info['label']}...")
             
-            for j in missing_info['jockey']: all_missing['jockey'].add(j)
-            for t in missing_info['trainer']: all_missing['trainer'].add(t)
-            if 'trainer_debug' in missing_info and not missing_info['trainer_debug'].empty:
-                 trainer_debug_list.append(missing_info['trainer_debug'])
-            
-            top_ai = res.iloc[0]
-            
-            pace_hits_raw = res[res['判定'] == "🚀 展開の神"]
-            pace_hits = pace_hits_raw.head(1) if not pace_hits_raw.empty else pd.DataFrame()
-            
-            hole_hits = res[res['判定_穴'] == "💣 穴馬の極意"]
-            
-            try: top_odds = float(str(top_ai['オッズ']).replace('-','0'))
-            except: top_odds = 0
-            is_ai_target = (3.0 <= top_odds <= 30.0)
-            
-            res['overlap_badges'] = [[] for _ in range(len(res))]
-            if is_ai_target:
-                res.at[res.index[0], 'overlap_badges'].append("ai")
-            for idx in pace_hits.index: res.at[idx, 'overlap_badges'].append("pace")
-            for idx in hole_hits.index: res.at[idx, 'overlap_badges'].append("hole")
-            
-            if not pace_hits.empty: results['pace'].append({'race': race['label'], 'url': race['url'], 'hits': pace_hits, 'grade': race['grade']})
-            if not hole_hits.empty: results['hole'].append({'race': race['label'], 'url': race['url'], 'hits': hole_hits, 'grade': race['grade']})
-            if is_ai_target: results['ai'].append({'race': race['label'], 'url': race['url'], 'hits': res.iloc[[0]], 'grade': race['grade']})
-
-            race_id = df.iloc[0]['race_id']
-            ranks, win_p, place_p, _ = scrape_race_result(race_id)
-            if ranks:
-                def update(cat, horse):
-                    stats[cat]['bets'] += 1
-                    r = ranks.get(horse['馬番'], 99)
+            try:
+                data = future.result()
+                if data['status'] == 'success':
+                    res = data['df']
+                    race = data['race']
                     
-                    if r == 1: 
-                        stats[cat]['win_ret'] += win_p.get(horse['馬番'], 0)
-                        
-                    if r <= 3:
-                        stats[cat]['hit_count'] += 1
-                        stats[cat]['place_ret'] += place_p.get(horse['馬番'], 0)
-                        st.session_state.hits_details.append({"戦略": cat, "レース": race['label'], "馬名": horse['馬名'], "着順": r, "単勝": win_p.get(horse['馬番'], 0), "複勝": place_p.get(horse['馬番'], 0)})
+                    # Missing Info集計
+                    m_info = data['missing_info']
+                    for j in m_info['jockey']: all_missing['jockey'].add(j)
+                    for t in m_info['trainer']: all_missing['trainer'].add(t)
+                    if 'trainer_debug' in m_info and not m_info['trainer_debug'].empty:
+                        trainer_debug_list.append(m_info['trainer_debug'])
+                    
+                    # 結果リストへの追加
+                    if not data['pace_hits'].empty: results['pace'].append({'race': race['label'], 'url': race['url'], 'hits': data['pace_hits'], 'grade': race['grade']})
+                    if not data['hole_hits'].empty: results['hole'].append({'race': race['label'], 'url': race['url'], 'hits': data['hole_hits'], 'grade': race['grade']})
+                    if data['is_ai_target']: results['ai'].append({'race': race['label'], 'url': race['url'], 'hits': res.iloc[[0]], 'grade': race['grade']})
+                    
+                    # 成績集計 (Backtest)
+                    ranks = data['ranks']
+                    win_p = data['win_p']
+                    place_p = data['place_p']
+                    
+                    if ranks:
+                        def update(cat, horse):
+                            stats[cat]['bets'] += 1
+                            r = ranks.get(horse['馬番'], 99)
+                            if r == 1: stats[cat]['win_ret'] += win_p.get(horse['馬番'], 0)
+                            if r <= 3:
+                                stats[cat]['hit_count'] += 1
+                                stats[cat]['place_ret'] += place_p.get(horse['馬番'], 0)
+                                st.session_state.hits_details.append({"戦略": cat, "レース": race['label'], "馬名": horse['馬名'], "着順": r, "単勝": win_p.get(horse['馬番'], 0), "複勝": place_p.get(horse['馬番'], 0)})
 
-                if is_ai_target: update('ai', top_ai)
-                if not pace_hits.empty: update('pace', pace_hits.iloc[0])
-                if not hole_hits.empty: 
-                     hole_sorted = hole_hits.sort_values(['AIスコア', 'raw_preds'], ascending=[False, False])
-                     update('hole', hole_sorted.iloc[0])
-
-        progress_bar.progress((i + 1) / len(race_list))
+                        if data['is_ai_target']: update('ai', data['top_ai'])
+                        if not data['pace_hits'].empty: update('pace', data['pace_hits'].iloc[0])
+                        if not data['hole_hits'].empty: 
+                            hole_sorted = data['hole_hits'].sort_values(['AIスコア', 'raw_preds'], ascending=[False, False])
+                            update('hole', hole_sorted.iloc[0])
+                            
+            except Exception as e:
+                print(f"Error processing {race_info['label']}: {e}")
+            
+            progress_bar.progress((i + 1) / len(futures))
     
     status_text.empty()
     progress_bar.empty()
