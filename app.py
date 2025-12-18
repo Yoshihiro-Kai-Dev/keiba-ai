@@ -333,90 +333,100 @@ def detect_grade_from_icon(element):
     return None
 
 # ---------------------------------------------------------
-# 修正版 get_html_content (一覧ページも許可するバージョン)
+# 修正版 get_html_content (検問撤廃 & 中身確認モード)
 # ---------------------------------------------------------
 def get_html_content(url):
-    debug_container = st.expander(f"🕵️‍♂️ 通信デバッグログ: {url[-20:]}", expanded=False)
+    debug_container = st.expander(f"🕵️‍♂️ 通信デバッグログ: {url[-20:]}", expanded=True) # 最初から開く
     
-    # 判定用キーワード（ここを広げました）
-    # HorseList/Umaban: 出馬表ページ用
-    # RaceList/RaceTop: レース一覧ページ用
-    def is_valid_html(html):
-        if not html: return False
-        keywords = ["HorseList", "Umaban", "RaceList", "RaceTop", "Kaisai"]
-        return any(k in html for k in keywords)
+    html_content = None
+    source_type = "None"
 
     # 1. requests での取得を試みる
     try:
         debug_container.write("Attempting requests...")
         res = requests.get(url, headers=HEADERS, timeout=5)
         if res.status_code == 200:
-            html_content = None
+            # エンコーディング対応
             for enc in ['euc-jp', 'utf-8', 'shift_jis', 'cp932']:
                 try: 
-                    html_content = res.content.decode(enc)
-                    break
+                    decoded = res.content.decode(enc)
+                    # タイトルタグを抽出して確認
+                    if "<title>" in decoded:
+                        html_content = decoded
+                        source_type = "requests"
+                        break
                 except: continue
             
-            # ★修正点: 判定ロジックに関数を使用
-            if is_valid_html(html_content):
-                debug_container.write("✅ requests success (Content validated)")
-                return html_content
+            if html_content:
+                debug_container.write("✅ requests success")
             else:
-                debug_container.warning("⚠️ requests OK but content invalid. Switching to Selenium...")
+                debug_container.warning("⚠️ requests returned 200 but decoding failed.")
         else:
             debug_container.write(f"❌ requests failed: status {res.status_code}")
     except Exception as e:
         debug_container.write(f"❌ requests error: {e}")
 
-    # 2. Selenium (Chrome) での取得を試みる
-    try:
-        debug_container.write("Attempting Selenium...")
-        options = Options()
-        options.add_argument('--headless')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument('--disable-gpu')
-        options.add_argument('--window-size=1920,1080')
-        options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-        
-        driver = None
+    # 2. requestsでダメなら Selenium (Chrome) での取得を試みる
+    if not html_content:
         try:
-            from selenium.webdriver.chrome.service import Service
-            service = Service()
-            driver = webdriver.Chrome(options=options, service=service)
-            debug_container.write("✅ Driver initialized (Standard)")
-        except Exception as e1:
-            debug_container.warning(f"⚠️ Standard Driver Init Failed: {e1}")
+            debug_container.write("Attempting Selenium...")
+            options = Options()
+            options.add_argument('--headless')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--window-size=1920,1080')
+            options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+            
+            driver = None
             try:
-                from webdriver_manager.chrome import ChromeDriverManager
-                from selenium.webdriver.chrome.service import Service as ChromeService
-                service = ChromeService(ChromeDriverManager().install())
+                from selenium.webdriver.chrome.service import Service
+                service = Service()
                 driver = webdriver.Chrome(options=options, service=service)
-                debug_container.write("✅ Driver initialized (Fallback)")
-            except Exception as e2:
-                debug_container.error(f"❌ Fallback Failed: {e2}")
-                return None
-
-        if driver:
-            try:
-                driver.get(url)
-                time.sleep(2)
-                html = driver.page_source
-                
-                # ★修正点: Seleniumでも同じ判定ロジックを使用
-                if is_valid_html(html):
-                    debug_container.write(f"✅ Selenium Get success (Content validated)")
-                    return html
-                else:
-                    debug_container.error("❌ Selenium also failed validation.")
-                    debug_container.code(html[:1000]) # デバッグ用に先頭を表示
+                debug_container.write("✅ Driver initialized (Standard)")
+            except Exception as e1:
+                debug_container.warning(f"⚠️ Standard Driver Init Failed: {e1}")
+                try:
+                    from webdriver_manager.chrome import ChromeDriverManager
+                    from selenium.webdriver.chrome.service import Service as ChromeService
+                    service = ChromeService(ChromeDriverManager().install())
+                    driver = webdriver.Chrome(options=options, service=service)
+                    debug_container.write("✅ Driver initialized (Fallback)")
+                except Exception as e2:
+                    debug_container.error(f"❌ Fallback Failed: {e2}")
                     return None
-            finally:
-                driver.quit()
+
+            if driver:
+                try:
+                    driver.get(url)
+                    time.sleep(3) # 長めに待つ
+                    html_content = driver.page_source
+                    source_type = "Selenium"
+                    debug_container.write(f"✅ Selenium Get success")
+                except Exception as e_get:
+                    debug_container.error(f"❌ Driver Get Error: {e_get}")
+                finally:
+                    driver.quit()
+        except Exception as e:
+            debug_container.error(f"❌ Critical Selenium error: {e}")
+
+    # 3. 取得結果の診断表示（ここが重要！）
+    if html_content:
+        # タイトルタグを探す
+        import re
+        title_match = re.search(r'<title>(.*?)</title>', html_content, re.IGNORECASE)
+        page_title = title_match.group(1) if title_match else "No Title Found"
         
-    except Exception as e:
-        debug_container.error(f"❌ Critical Selenium error: {e}")
+        debug_container.info(f"📄 Page Title: {page_title}")
+        debug_container.info(f"📡 Source: {source_type}")
+        
+        # HTMLの先頭500文字を表示して中身を確認
+        debug_container.text("👇 HTML Content Preview (First 500 chars):")
+        debug_container.code(html_content[:500], language='html')
+        
+        return html_content
+    else:
+        debug_container.error("💀 All methods failed to retrieve content.")
         return None
 
 def render_grade_badge_html(grade):
