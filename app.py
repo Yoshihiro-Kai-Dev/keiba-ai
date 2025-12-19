@@ -40,7 +40,7 @@ def generate_gemini_comment(row):
         genai.configure(api_key=GEMINI_API_KEY)
         
         # ★最新モデルを指定
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        model = genai.GenerativeModel('gemini-flash-lite-latest')
     except:
         print("モデル一覧の取得に失敗しました")
 # --------------------------------------
@@ -64,28 +64,27 @@ def generate_gemini_comment(row):
         genai.configure(api_key=api_key)
         
         # ★★★ ここを修正しました (リストにあった最新モデルを指定) ★★★
-        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        model = genai.GenerativeModel('gemini-flash-lite-latest')
 
-        # プロンプトの作成
+        # プロンプトの作成（Liteモデル向け・熱血強化版）
         prompt = f"""
-        あなたはベテランの競馬予想AIです。以下の有力馬のデータに基づき、
-        「なぜこの馬が推奨できるのか」を、競馬ファンに響くように
-        150文字程度の「熱い寸評」でまとめてください。
+        あなたは日本一の競馬予想AIです。以下のデータに基づき、この馬が「なぜ買いなのか」を
+        競馬新聞のベテラン記者が書くような、読み手の心を揺さぶる「熱い推奨コメント」で書いてください。
 
         【馬データ】
         ・馬名: {row['馬名']}
         ・騎手: {row['騎手']} (勝率: {row.get('jockey_win_rate', 0)*100:.1f}%)
         ・調教師: {row['調教師']} (勝率: {row.get('trainer_win_rate', 0)*100:.1f}%)
-        ・AI信頼度: {row['AIスコア']*100:.1f}% (かなり高い)
+        ・AI信頼度: {row['AIスコア']*100:.1f}% (高い！)
         ・近走3走平均着順: {row.get('recent_rank_avg', '不明')}位
         ・脚質傾向: {"先行" if row.get('run_style_ratio', 0) > 0.5 else "差し・追込"}
-        ・父: {row.get('sire_name', '不明')}
         
-        【出力ルール】
-        ・結論から書く。
-        ・数値の羅列ではなく、定性的な表現（「名手○○の手綱捌きに期待」「安定感抜群」など）に変える。
-        ・敬語は使わず、雑誌のコラムのような「だ・である」調で。
-        ・最後に必ず「自信あり！」のような一言を添える。
+        【執筆ルール（絶対遵守）】
+        1. **200文字程度**でまとめること。
+        2. 「～です」「～ます」は禁止。「～だ！」「～に違いない！」と断定口調にする。
+        3. 数値を並べるのではなく、「驚異の勝率」「安定感抜群」といった**感情的な言葉**に変換する。
+        4. 最後に必ず、「迷わず買え！」「本命はこの馬だ！」といった力強い一言で締める。
+        5. 競馬ファンが好む「専門用語（脚質、展開、手綱捌きなど）」を自然に混ぜる。
         """
 
         response = model.generate_content(prompt)
