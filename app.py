@@ -49,7 +49,6 @@ def generate_gemini_comment(row):
     candidate_models = [
         'gemini-pro-latest',
         'gemini-flash-latest',
-        'gemini-flash-lite-latest',
         'gemini-3-pro-preview',
         # 'gemini-3-flash-preview',
         'gemini-2.5-pro',
@@ -57,6 +56,7 @@ def generate_gemini_comment(row):
         'gemini-2.5-flash-preview-09-2025',
         'gemini-2.5-flash-lite-preview-09-2025',
         'gemini-2.5-flash-lite',
+        'gemini-flash-lite-latest',
         'gemini-2.0-flash-exp',
         'gemini-2.0-flash',
         'gemini-2.0-flash-001',
