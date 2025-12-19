@@ -75,19 +75,23 @@ def generate_gemini_comment(row):
 
     genai.configure(api_key=api_key)
 
+    # 修正版ループ処理
+    errors = []
     for model_name in candidate_models:
         try:
             model = genai.GenerativeModel(model_name)
             response = model.generate_content(prompt)
-            # ★ 変更点: テキストとモデル名をセットで返す
             return response.text, model_name 
 
         except Exception as e:
             error_msg = str(e)
+            errors.append(f"{model_name}: {error_msg}") # エラーを記録
+            
+            # フォールバック処理（次へ）
             if "429" in error_msg or "Quota" in error_msg or "404" in error_msg or "not found" in error_msg:
                 continue
             else:
-                return f"エラー発生: {error_msg}", model_name
+                return f"致命的エラー: {error_msg}", model_name
 
     return "🚫 本日のAI予測利用枠（全モデル合計）を使い切りました。明日またお試しください。", "Limit Reached"
 
@@ -1870,6 +1874,9 @@ def main():
                         # ★ 変更点: 戻り値を2つ受け取る
                         with st.spinner("🦄 Geminiが寸評を執筆中..."):
                             ai_comment, used_model = generate_gemini_comment(top)
+
+                        # Hero Cardの下にコメントを表示するエリアを追加
+                        st.markdown(render_hero_card(top), unsafe_allow_html=True)
                         
                         # 寸評表示用のおしゃれなボックス（モデル名を追加）
                         st.markdown(f"""
