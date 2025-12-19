@@ -34,9 +34,8 @@ else:
 def generate_gemini_comment(row):
     """
     特徴量データを受け取り、Geminiに寸評を書かせる関数
-    (自動フォールバック機能付き: 3-flash -> 2.5-flash -> 2.5-lite)
+    戻り値: (寸評テキスト, 使用したモデル名) のタプル
     """
-    # ★ APIキーの読み込み
     api_key = None
     if "GEMINI_API_KEY" in st.secrets:
         api_key = st.secrets["GEMINI_API_KEY"]
@@ -44,17 +43,16 @@ def generate_gemini_comment(row):
         api_key = GEMINI_API_KEY 
 
     if not api_key:
-        return "⚠️ APIキー設定が必要です (.streamlit/secrets.toml)"
+        return "⚠️ APIキー設定が必要です (.streamlit/secrets.toml)", "No Key"
 
-    # ★★★ ここがポイント：優先順位リスト ★★★
-    # 上から順にトライします
+    # フォールバック順序
     candidate_models = [
-        'gemini-3-flash',       # ① 最優先（上限：20/日）
-        'gemini-2.5-flash',     # ② 次点（上限：20/日）
-        'gemini-2.5-flash-lite' # ③ 最後の砦（上限：20/日）
+        'gemini-3-flash',       # ① 最優先
+        'gemini-2.5-flash',     # ② 次点
+        'gemini-2.5-flash-lite' # ③ 最後の砦
     ]
 
-    # プロンプトの作成（全モデル共通・熱血版）
+    # プロンプト（前回と同じ熱血版）
     prompt = f"""
     あなたは日本一の競馬予想AIです。以下のデータに基づき、この馬が「なぜ買いなのか」を
     競馬新聞のベテラン記者が書くような、読み手の心を揺さぶる「熱い推奨コメント」で書いてください。
@@ -68,7 +66,7 @@ def generate_gemini_comment(row):
     ・脚質傾向: {"先行" if row.get('run_style_ratio', 0) > 0.5 else "差し・追込"}
     
     【執筆ルール（絶対遵守）】
-    1. **200文字程度**でわかりやすくまとめること。
+    1. **250文字程度**でわかりやすくまとめること。
     2. 「～です」「～ます」は禁止。「～だ！」「～に違いない！」と断定口調にする。
     3. 数値を並べるのではなく、「驚異の勝率」「安定感抜群」といった**感情的な言葉**に変換する。
     4. 最後に必ず、「迷わず買え！」「本命はこの馬だ！」といった力強い一言で締める。
@@ -77,29 +75,21 @@ def generate_gemini_comment(row):
 
     genai.configure(api_key=api_key)
 
-    # 順番にモデルを試すループ
     for model_name in candidate_models:
         try:
-            print(f"Trying model: {model_name}...") # デバッグ用
             model = genai.GenerativeModel(model_name)
             response = model.generate_content(prompt)
-            
-            # 成功したら、どのモデルで生成したか分かるようにログを残しても良いですが、
-            # ここではシンプルにテキストだけ返します。
-            return response.text
+            # ★ 変更点: テキストとモデル名をセットで返す
+            return response.text, model_name 
 
         except Exception as e:
             error_msg = str(e)
-            # エラーが「制限超過(429)」や「見つからない(404)」なら次へ進む
             if "429" in error_msg or "Quota" in error_msg or "404" in error_msg or "not found" in error_msg:
-                # 失敗したらループを継続（次のモデルへ）
                 continue
             else:
-                # その他の致命的なエラー（認証失敗など）はリトライしても無駄なので返す
-                return f"エラー発生 ({model_name}): {error_msg}"
+                return f"エラー発生: {error_msg}", model_name
 
-    # ループを抜けた＝全モデルで失敗した
-    return "🚫 本日のAI予測利用枠（全モデル合計）を使い切りました。明日またお試しください。"
+    return "🚫 本日のAI予測利用枠（全モデル合計）を使い切りました。明日またお試しください。", "Limit Reached"
 
 # ---------------------------------------------------------
 # 1. 設定 & ページ初期化
@@ -1877,13 +1867,11 @@ def main():
                         top = res.iloc[0]
                         
                         # ★ ここでGeminiを呼び出す！
+                        # ★ 変更点: 戻り値を2つ受け取る
                         with st.spinner("🦄 Geminiが寸評を執筆中..."):
-                            ai_comment = generate_gemini_comment(top)
+                            ai_comment, used_model = generate_gemini_comment(top)
                         
-                        # Hero Cardの下にコメントを表示するエリアを追加
-                        st.markdown(render_hero_card(top), unsafe_allow_html=True)
-                        
-                        # 寸評表示用のおしゃれなボックス
+                        # 寸評表示用のおしゃれなボックス（モデル名を追加）
                         st.markdown(f"""
                         <div style="
                             background: linear-gradient(135deg, #fdfbf7 0%, #fff 100%); 
@@ -1904,8 +1892,20 @@ def main():
                                 border-radius: 4px; 
                                 font-weight: bold; 
                                 font-size: 0.8rem;
+                                display: flex;
+                                align-items: center;
+                                gap: 5px;
                             ">
-                                ✨ Gemini's Eye
+                                <span>✨ Gemini's Eye</span>
+                                <span style="
+                                    background: rgba(255,255,255,0.2); 
+                                    padding: 0px 6px; 
+                                    border-radius: 3px; 
+                                    font-size: 0.7em; 
+                                    font-weight: normal;
+                                ">
+                                    by {used_model}
+                                </span>
                             </div>
                             <div style="
                                 font-family: 'Hiragino Mincho ProN', serif; 
