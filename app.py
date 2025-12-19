@@ -40,7 +40,7 @@ def generate_gemini_comment(row):
         genai.configure(api_key=GEMINI_API_KEY)
         
         # ★最新モデルを指定
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        model = genai.GenerativeModel('gemini-flash-latest')
     except:
         print("モデル一覧の取得に失敗しました")
 # --------------------------------------
@@ -64,7 +64,7 @@ def generate_gemini_comment(row):
         genai.configure(api_key=api_key)
         
         # ★★★ ここを修正しました (リストにあった最新モデルを指定) ★★★
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        model = genai.GenerativeModel('gemini-flash-latest')
 
         # プロンプトの作成
         prompt = f"""
