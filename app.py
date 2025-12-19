@@ -47,9 +47,38 @@ def generate_gemini_comment(row):
 
     # フォールバック順序
     candidate_models = [
-        'gemini-3-pro-preview'       # ① 最優先
-        # 'gemini-2.5-flash',     # ② 次点
-        # 'gemini-2.5-flash-lite' # ③ 最後の砦
+        'gemini-2.5-flash',
+        'gemini-2.5-pro',
+        'gemini-2.0-flash-exp',
+        'gemini-2.0-flash',
+        'gemini-2.0-flash-001',
+        'gemini-2.0-flash-exp-image-generation',
+        'gemini-2.0-flash-lite-001',
+        'gemini-2.0-flash-lite',
+        'gemini-2.0-flash-lite-preview-02-05',
+        'gemini-2.0-flash-lite-preview',
+        'gemini-exp-1206',
+        'gemini-2.5-flash-preview-tts',
+        'gemini-2.5-pro-preview-tts',
+        'gemini-flash-latest',
+        'gemini-flash-lite-latest',
+        'gemini-pro-latest',
+        'gemini-2.5-flash-lite',
+        'gemini-2.5-flash-image-preview',
+        'gemini-2.5-flash-image',
+        'gemini-2.5-flash-preview-09-2025',
+        'gemini-2.5-flash-lite-preview-09-2025',
+        'gemini-3-pro-preview',
+        'gemini-3-flash-preview',
+        'gemini-3-pro-image-preview',
+        'gemini-robotics-er-1.5-preview',
+        'gemini-2.5-computer-use-preview-10-2025',
+        'gemini-embedding-exp-03-07',
+        'gemini-embedding-exp',
+        'gemini-embedding-001',
+        'gemini-2.5-flash-native-audio-latest',
+        'gemini-2.5-flash-native-audio-preview-09-2025',
+        'gemini-2.5-flash-native-audio-preview-12-2025'
     ]
 
     # プロンプト（前回と同じ熱血版）
@@ -93,7 +122,7 @@ def generate_gemini_comment(row):
             else:
                 return f"致命的エラー: {error_msg}", model_name
 
-    return f"🚫 本日のAI予測利用枠（全モデル合計）を使い切りました。明日またお試しください。\n詳細: {'; '.join(errors)}", "All Failed"
+    return f"🚫 本日のAI予測利用枠（全モデル合計）を使い切りました。明日またお試しください。"
 
 # ---------------------------------------------------------
 # 1. 設定 & ページ初期化
