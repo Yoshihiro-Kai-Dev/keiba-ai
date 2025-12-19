@@ -47,7 +47,7 @@ def generate_gemini_comment(row):
 
     # フォールバック順序
     candidate_models = [
-        'gemini-3-flash'       # ① 最優先
+        'gemini-3-pro-preview'       # ① 最優先
         # 'gemini-2.5-flash',     # ② 次点
         # 'gemini-2.5-flash-lite' # ③ 最後の砦
     ]
