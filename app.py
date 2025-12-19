@@ -349,10 +349,10 @@ try:
         DATABASE_URL = st.secrets["DATABASE_URL"]
     else:
         # secretsファイルはあるがキーがない場合
-        DATABASE_URL = 'postgresql://neondb_owner:npg_4HTcfQoa0Suq@ep-empty-fog-a1m9gve8-pooler.ap-southeast-1.aws.neon.tech/keiba_db?sslmode=require&channel_binding=require'
+        DATABASE_URL = 'None'
 except:
     # ローカルで secrets.toml 自体がない場合（今回のエラーはここで吸収）
-    DATABASE_URL = 'postgresql://neondb_owner:npg_4HTcfQoa0Suq@ep-empty-fog-a1m9gve8-pooler.ap-southeast-1.aws.neon.tech/keiba_db?sslmode=require&channel_binding=require'
+    DATABASE_URL = 'None'
 
 COURSE_START_TO_CORNER = {
     ('東京', '芝', 1400): 350, ('東京', '芝', 1600): 550, ('東京', '芝', 1800): 150, 
@@ -413,7 +413,8 @@ MANUAL_TRAINER_MAP = {
     "田中勝": "[東] 田中勝春", # 候補: []
     "角田": "[西] 角田晃一", # 候補: ['[地] 角田輝也', '[西] 角田晃一']
     "安田": "[西] 安田翔伍", # 候補: ['[地] 安田武広', '[西]  安田翔伍', '[西] 安田翔伍', '[西] 安田隆行']
-    "グラファー": "[外] グラファ"
+    "グラファー": "[外] グラファ",
+    "佐々木": "[西] 佐々木晶", # 候補: ['[地] 佐々木国', '[地] 佐々木由', '[西] 佐々木晶']
 }
 MANUAL_JOCKEY_MAP = {
     "鮫島駿": "鮫島克駿", "秋山稔": "秋山稔樹", "プーシャン": "プーシャ",
@@ -851,9 +852,9 @@ def scrape_race_data(url, driver=None):
         race_id_match = re.search(r'race_id=(\d+)', url)
         rid = race_id_match.group(1) if race_id_match else None
         
-        # ★修正: Selenium(driver)がいる場合は、画面の最新情報を優先するためAPIは叩かない
-        # driverがない(requests)時だけ、APIでデータを補完する
-        if rid and driver is None:
+        # ★修正: 一括スキャン時(driverあり)でもオッズが0になるのを防ぐため、
+        # 常にAPIを叩いてデータを確保するように戻します
+        if rid:
             try:
                 ts = int(time.time() * 1000)
                 api_url = f"https://race.netkeiba.com/api/api_get_jra_odds.html?race_id={rid}&type=1&action=init&_={ts}"
@@ -1550,6 +1551,7 @@ def scan_races(target_date, race_list, model, encoders, engine):
         
     results = {'pace': [], 'hole': [], 'ai': []}
     st.session_state.hits_details = []
+    st.session_state.scan_debug_log = [] # ★追加: 診断用ログの初期化
     
     all_missing = {'jockey': set(), 'trainer': set()}
     trainer_debug_list = []
@@ -1599,6 +1601,21 @@ def scan_races(target_date, race_list, model, encoders, engine):
                 if data['status'] == 'success':
                     res = data['df']
                     race = data['race']
+                    top_ai = data['top_ai'] # トップの馬データを確保
+
+                    # ★追加: 診断用データを保存 (判定結果に関わらず全レース記録)
+                    try:
+                        debug_odds = float(str(top_ai['オッズ']).replace('-', '0'))
+                    except: debug_odds = 0.0
+                    
+                    st.session_state.scan_debug_log.append({
+                        "レース": race['label'],
+                        "トップ馬": top_ai['馬名'],
+                        "AIスコア": f"{top_ai['AIスコア']*100:.1f}%",
+                        "取得オッズ": debug_odds, # ここが0だと判定落ちします
+                        "判定(神)": top_ai['判定'],
+                        "判定(穴)": top_ai['判定_穴']
+                    })
                     
                     # Missing Info集計
                     m_info = data['missing_info']
@@ -1662,7 +1679,7 @@ def toggle_expander(key):
 def main():
     load_custom_css()
     
-    video_files = ["resource/競馬シーン_サイト埋め込み用動画.mp4", "resource/競馬シーン_サイト埋め込み用動画_2.mp4", "resource/競馬シーン_サイト埋め込み用動画_3.mp4"]
+    video_files = ["resource/競馬シーン_サイト埋め込み用動画.mp4", "resource/競馬シーン_サイト埋め込み用動画_2.mp4", "resource/競馬シーン_サイト埋め込み用動画_3.mp4","resource/競馬シーン_サイト埋め込み用動画_4.mp4"]
     b64 = get_base64_video(video_files)
     video_src = f"data:video/mp4;base64,{b64}" if b64 else "https://videos.pexels.com/video-files/5230349/5230349-uhd_2560_1440_25fps.mp4"
     
@@ -1858,6 +1875,15 @@ def main():
         st.markdown('<div id="section_hole"></div>', unsafe_allow_html=True)
         with st.expander("💣 穴馬の極意 (ROI 87%)", expanded=st.session_state.expander_states['hole']):
             render_scan_list(results['hole'], 'hole')
+
+        # ★追加: 診断機能の表示
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.expander("🕵️‍♂️ スキャン診断 (該当なしの原因調査)", expanded=False):
+            if 'scan_debug_log' in st.session_state and st.session_state.scan_debug_log:
+                st.info("一括スキャン時にAIが認識したオッズを確認できます。ここが「0」になっている場合、判定ロジックで弾かれています。")
+                st.dataframe(pd.DataFrame(st.session_state.scan_debug_log))
+            else:
+                st.write("データがありません")
 
     with col_b:
         if st.session_state.race_list:
