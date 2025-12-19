@@ -851,7 +851,15 @@ def scrape_race_data(url, driver=None):
         rid = race_id_match.group(1) if race_id_match else None
         if rid:
             try:
-                r_api = requests.get(f"https://race.netkeiba.com/api/api_get_jra_odds.html?race_id={rid}&type=1&action=init", headers=HEADERS, timeout=5)
+                # ★修正: タイムスタンプ(_={ts})を追加してサーバーキャッシュを強制回避
+                ts = int(time.time() * 1000)
+                api_url = f"https://race.netkeiba.com/api/api_get_jra_odds.html?race_id={rid}&type=1&action=init&_={ts}"
+                
+                # ヘッダーも強化してキャッシュ無効化を宣言
+                no_cache_headers = HEADERS.copy()
+                no_cache_headers.update({'Pragma': 'no-cache', 'Cache-Control': 'no-cache'})
+                
+                r_api = requests.get(api_url, headers=no_cache_headers, timeout=5)
                 if r_api.status_code == 200:
                     raw_odds = r_api.json().get('data', {}).get('odds', {}).get('1', {})
                     for h, i in raw_odds.items(): api_odds_map[int(h)] = i[0]
