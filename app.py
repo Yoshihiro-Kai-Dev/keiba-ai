@@ -90,6 +90,8 @@ def generate_gemini_comment(row):
     ・馬名: {row['馬名']}
     ・騎手: {row['騎手']} (勝率: {row.get('jockey_win_rate', 0)*100:.1f}%)
     ・調教師: {row['調教師']} (勝率: {row.get('trainer_win_rate', 0)*100:.1f}%)
+    ・父: {row.get('sire_name', '不明')} (勝率: {row.get('sire_win_rate', 0)*100:.1f}%)
+    ・母父: {row.get('bms_name', '不明')} (勝率: {row.get('bms_win_rate', 0)*100:.1f}%)
     ・AI信頼度: {row['AIスコア']*100:.1f}% (高い！)
     ・近走3走平均着順: {row.get('recent_rank_avg', '不明')}位
     ・脚質傾向: {"先行" if row.get('run_style_ratio', 0) > 0.5 else "差し・追込"}
@@ -1944,11 +1946,12 @@ def main():
                                 </span>
                             </div>
                             <div style="
-                                font-family: 'Hiragino Mincho ProN', serif; 
-                                font-size: 1.1rem; 
-                                color: #333; 
+                                font-family: 'UD Digi Kyokasho N-R', 'UD Digi Kyokasho', serif;
+                                font-size: 1.1rem;
+                                color: #333;
                                 line-height: 1.6;
                                 margin-top: 5px;
+                                font-style: italic;
                             ">
                                 {ai_comment}
                             </div>
