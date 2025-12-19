@@ -81,7 +81,11 @@ def generate_gemini_comment(row):
         # 'gemini-2.5-flash-native-audio-preview-12-2025',
     ]
 
-    # プロンプト
+    # 過去走サマリーの構築
+    history_text = row.get('recent_history_summary', 'データなし')
+    pace_forecast = "ハイペース予想（差し・追込有利）" if row.get('is_high_pace_forecast') else ("スローペース予想（逃げ・先行有利）" if row.get('is_slow_pace_forecast') else "平均的なペース予想")
+    
+    # プロンプト（Few-Shot導入）
     prompt = f"""
     あなたは日本一の競馬予想AIです。以下のデータに基づき、この馬が「なぜ買いなのか」を
     競馬新聞のベテラン記者が書くような、読み手の心を揺さぶる「熱くも冷静な推奨コメント」で書いてください。
@@ -92,17 +96,33 @@ def generate_gemini_comment(row):
     ・調教師: {row['調教師']} (勝率: {row.get('trainer_win_rate', 0)*100:.1f}%)
     ・父: {row.get('sire_name', '不明')} (勝率: {row.get('sire_win_rate', 0)*100:.1f}%)
     ・母父: {row.get('bms_name', '不明')} (勝率: {row.get('bms_win_rate', 0)*100:.1f}%)
-    ・AI評価値 (Rating): {int(row.get('AI Rating', 0))}/99 （99点満点の偏差値的なRating）
-    ・近走3走平均着順: {row.get('recent_rank_avg', '不明')}位
+    ・AI評価値 (Rating): {int(row.get('AI Rating', 0))}/99
     ・脚質傾向: {"先行" if row.get('run_style_ratio', 0) > 0.5 else "差し・追込"}
+    ・今回の展開予測: {pace_forecast}
+    ・注目ポイント: {row.get('BoostReason', '特になし')}
+
+    【過去3走の推移】
+    {history_text}
     
+    【執筆ヒント：推奨理由の組み立て】
+    - 過去走で速い上がり（メンバー最速など）を使っている場合、展開が向けば突き抜ける可能性。
+    - 前走大敗でも、今回距離短縮や得意コースへの変更があれば「一変の余地」として強調。
+    - AI Ratingが高いのは、血統・騎手・展開のすべてがハイレベルで噛み合っている証拠。
+
+    【例文１（差し馬の場合）】
+    前走はスローに泣いたが、終いの脚は際立っていた。今回は展開が速くなりそうで、この馬の豪脚が炸裂する舞台は整った。AI Rating 85が示す通り、地力は一枚上。ここは迷わず突き抜けるシーンを期待したい。
+
+    【例文２（逃げ・先行馬の場合）】
+    近走の安定感は特筆もの。今回のメンバー構成なら楽に先手を奪えるはずだ。血統的にもこの舞台はベストで、内枠を利しての逃げ切りが濃厚。鉄板の軸として、これ以上の存在は見当たらない。
+
     【執筆ルール（絶対遵守）】
-    1. **250文字程度**でわかりやすくまとめること。
-    2. 「～です」「～ます」は禁止。「～だ！」「～に違いない！」と断定口調にする。
+    1. **250文字程度**でプロの記者風にまとめる。
+    2. 「～です」「～ます」は禁止。「～だ！」「～だろう」「～に違いない」と断定・推量口調にする。
     3. 数値を並べるのではなく、「驚異の勝率」「安定感抜群」といった**感情的な言葉**に変換する。
     4. 最後に必ず、「迷わず買え！」「本命はこの馬だ！」といった力強い一言で締める。
     5. 競馬ファンが好む「専門用語（脚質、展開、騎手や馬の特徴、血統など）」を自然に混ぜる。
     6. 20%の確率でオネェ口調になる。
+    7. AI評価値（Rating）80以上の場合は、500文字程度で語る。
     """
 
     genai.configure(api_key=api_key)
@@ -332,9 +352,61 @@ def load_custom_css():
             text-decoration: none; border: 2px solid rgba(255,255,255,0.2);
         }}
         .to-top-btn:hover {{ transform: scale(1.1); }}
+
+        /* Animations */
+        @keyframes fadeIn {{ from {{ opacity: 0; }} to {{ opacity: 1; }} }}
+        @keyframes slideUpFade {{ from {{ opacity: 0; transform: translateY(20px); }} to {{ opacity: 1; transform: translateY(0); }} }}
+        
+        .fade-in {{ animation: fadeIn 0.8s ease-in-out; }}
+        
+        /* 待ち時間トリビアカード */
+        .trivia-container {{
+            background: var(--card-bg);
+            border-left: 5px solid var(--primary-color);
+            padding: 20px;
+            border-radius: 15px;
+            margin: 20px 0;
+            box-shadow: var(--shadow-lg);
+            animation: slideUpFade 0.5s ease-out;
+        }}
+        .trivia-label {{ font-size: 0.8rem; font-weight: 700; color: var(--primary-color); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }}
+        .trivia-text {{ font-size: 1.1rem; font-weight: 500; line-height: 1.6; }}
+        
+        /* Loading 演出のカスタマイズ */
+        div[data-testid="stStatusWidget"] {{
+            background-color: var(--card-bg) !important;
+            border: var(--glass-border) !important;
+            border-radius: 15px !important;
+            box-shadow: var(--shadow-lg) !important;
+        }}
     </style>
     <div id="top-anchor"></div>
     <a href="#top-anchor" class="to-top-btn" title="Go to Top">⬆️</a>
+    """, unsafe_allow_html=True)
+
+# ---------------------------------------------------------
+# 2.1 競馬トリビア & UXパーツ
+# ---------------------------------------------------------
+KEIBA_TRIVIA = [
+    "世界で最も高額な賞金のレースは「サウジカップ」。1着賞金は約1000万ドル（約15億円）！",
+    "馬の視野は約350度。真後ろ以外はほとんど見えているけれど、立体的に見える範囲は狭いのだそう。",
+    "サラブレッドの時速は最高で約70km。これは一般道の車と同じくらいの速さだ！",
+    "すべてのサラブレッドは、たった3頭の「始祖」に行き着く。バイアリーターク、ダーレーアラビアン、ゴドルフィンアラビアンだ。",
+    "馬は鼻でしか呼吸ができない。だから鼻呼吸を妨げられると走れなくなってしまうのだ。",
+    "競馬の「ハロン」という単位は、英語の「帆（furrow）」が由来。1ハロンは約201.17メートル。",
+    "白毛の馬はとても珍しい。日本ではソダシが白毛馬として初めてG1を制覇して話題になったわね。",
+    "馬は立ったまま寝ることができる。脚の構造が、筋肉を使わずに固定できるようになっているからだ。",
+    "日本初の公式な競馬は、1862年に横浜の外国人居留地で行われたとされているわ。",
+    "サラブレッドの心臓は、重さが4〜5kgもある。一流馬の中には10kg近い巨大な心臓を持つ馬もいるんだ。"
+]
+
+def render_waiting_trivia():
+    trivia = random.choice(KEIBA_TRIVIA)
+    st.markdown(f"""
+    <div class="trivia-container">
+        <div class="trivia-label">💡 Did you know? / 競馬豆知識</div>
+        <div class="trivia-text">{trivia}</div>
+    </div>
     """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
@@ -360,7 +432,7 @@ COURSE_START_TO_CORNER = {
     ('東京', 'ダ', 1300): 340, ('東京', 'ダ', 1400): 440, ('東京', 'ダ', 1600): 150, ('東京', 'ダ', 2100): 240,
     ('中山', '芝', 1200): 275, ('中山', '芝', 1600): 240, ('中山', '芝', 1800): 205, 
     ('中山', '芝', 2000): 405, ('中山', '芝', 2200): 432, ('中山', '芝', 2500): 192,
-    ('中山', 'ダ', 1200): 502, ('中山', 'ダ', 1800): 375,
+    ('中山', 'ダ', 1200): 502, ('中山', 'ダ', 1800): 375, ('中山', 'ダ', 2400): 300,
     ('京都', '芝', 1200): 300, ('京都', '芝', 1400): 500, ('京都', '芝', 1600): 700, 
     ('京都', '芝', 1800): 900, ('京都', '芝', 2000): 300, ('京都', '芝', 2200): 400, ('京都', '芝', 3000): 200,
     ('京都', 'ダ', 1200): 400, ('京都', 'ダ', 1400): 600, ('京都', 'ダ', 1800): 280, ('京都', 'ダ', 1900): 380,
@@ -799,6 +871,7 @@ def get_race_list_by_date(target_date):
             if race_list: return race_list
     return race_list
 
+@st.cache_data(ttl=600)
 def scrape_race_result(race_id):
     url = f"https://race.netkeiba.com/race/result.html?race_id={race_id}"
     try:
@@ -965,7 +1038,8 @@ def scrape_race_data(url, driver=None):
     except: return None
 
 @st.cache_data(ttl=3600)
-def resolve_jockey_names(_engine, target_jockeys):
+def resolve_jockey_names(_engine, target_jockeys_tuple):
+    target_jockeys = list(target_jockeys_tuple)
     try: 
         if 'db_jockeys' not in st.session_state:
             st.session_state.db_jockeys = pd.read_sql('SELECT DISTINCT "騎手" FROM raw_race_results', _engine)['騎手'].dropna().unique().tolist()
@@ -983,7 +1057,8 @@ def resolve_jockey_names(_engine, target_jockeys):
     return mapping, missing
 
 @st.cache_data(ttl=3600)
-def resolve_trainer_names(_engine, target_trainers):
+def resolve_trainer_names(_engine, target_trainers_tuple):
+    target_trainers = list(target_trainers_tuple)
     try: 
         if 'db_trainers' not in st.session_state:
             st.session_state.db_trainers = pd.read_sql('SELECT DISTINCT "調教師" FROM raw_race_results', _engine)['調教師'].dropna().unique().tolist()
@@ -1057,12 +1132,13 @@ def process_passage_rank(passage):
     except: return np.nan
 
 @st.cache_data(ttl=600)
-def calc_horse_history(_engine, horse_names, target_date):
+def calc_horse_history(_engine, horse_names_tuple, target_date):
+    horse_names = list(horse_names_tuple)
     clean_names = [n.replace(" ", "").replace("　", "") for n in horse_names]
     names_str = "', '".join([n.replace("'", "''") for n in clean_names])
     
     query = f"""
-    SELECT "date", "馬名", "着順", "上り", "着差", "通過", "賞金(万円)", "距離", "コース区分", "騎手"
+    SELECT "date", "馬名", "着順", "上り", "着差", "通過", "賞金(万円)", "距離", "コース区分", "騎手", "race_id"
     FROM raw_race_results
     WHERE REPLACE(REPLACE("馬名", ' ', ''), '　', '') IN ('{names_str}') 
       AND "date" < '{target_date}'
@@ -1082,8 +1158,18 @@ def calc_horse_history(_engine, horse_names, target_date):
         hist_df['馬名_clean'] = hist_df['馬名'].astype(str).str.replace(" ", "").str.replace("　", "")
         hist_df['騎手_clean'] = hist_df['騎手'].astype(str).str.replace(" ", "").str.replace("　", "")
         
+        # 各レースの頭数を取得して正規化
+        rids = tuple(hist_df['race_id'].dropna().unique())
+        if rids:
+            rid_str = str(rids) if len(rids) > 1 else f"('{rids[0]}')"
+            headcount_df = pd.read_sql(f'SELECT "race_id", COUNT(*) as headcount FROM raw_race_results WHERE "race_id" IN {rid_str} GROUP BY "race_id"', _engine)
+            hist_df = hist_df.merge(headcount_df, on='race_id', how='left')
+        else:
+            hist_df['headcount'] = 14.0 # フォールバック
+            
+        hist_df['headcount'] = hist_df['headcount'].fillna(14.0)
         hist_df['first_pos'] = hist_df['通過'].apply(process_passage_rank)
-        hist_df['pos_rate'] = hist_df['first_pos'] / 14.0 
+        hist_df['pos_rate'] = hist_df['first_pos'] / hist_df['headcount']
         hist_df['is_nige'] = (hist_df['first_pos'] == 1).astype(int)
         hist_df['is_senko'] = (hist_df['pos_rate'] <= 0.3).astype(int)
 
@@ -1118,6 +1204,14 @@ def calc_horse_history(_engine, horse_names, target_date):
             total_money = h_data['money'].sum()
             cnt = len(h_data)
             
+            # 過去走サマリーの生成
+            history_rows = []
+            for i, r in h_data.tail(3).iterrows():
+                # 「1着 (上り34.5)」のような形式
+                hist_str = f"{r['date'].strftime('%Y/%m/%d')} {r['距離']}m({r['コース区分']}) : {int(r['着順'])}着 (上り{r['上り']})"
+                history_rows.append(hist_str)
+            history_summary = "\n".join(history_rows) if history_rows else "過去走データなし"
+
             stats.append({
                 '馬名': horse,
                 'interval_weeks': interval,
@@ -1135,22 +1229,42 @@ def calc_horse_history(_engine, horse_names, target_date):
                 'win_ratio': wins/cnt if cnt>0 else 0,
                 'nige_rate': nige_rate,
                 'senko_rate': senko_rate,
-                'avg_pos_rate': avg_pos_rate
+                'avg_pos_rate': avg_pos_rate,
+                'recent_history_summary': history_summary
             })
         return pd.DataFrame(stats), debug_info
-        
     except Exception as e:
         return pd.DataFrame(), {'error': str(e)}
+
+@st.cache_data(ttl=3600)
+def get_global_jockey_stats(_engine):
+    return pd.read_sql('SELECT "騎手", AVG(CASE WHEN "着順"=\'1\' THEN 1.0 ELSE 0.0 END) as jockey_win_rate, AVG(CASE WHEN "着順" IN (\'1\', \'2\') THEN 1.0 ELSE 0.0 END) as jockey_rentai_rate FROM raw_race_results GROUP BY "騎手"', _engine)
+
+@st.cache_data(ttl=3600)
+def get_global_trainer_stats(_engine):
+    return pd.read_sql('SELECT "調教師", AVG(CASE WHEN "着順"=\'1\' THEN 1.0 ELSE 0.0 END) as trainer_win_rate FROM raw_race_results GROUP BY "調教師"', _engine)
+
+@st.cache_data(ttl=3600)
+def get_global_pedigree_stats(_engine):
+    s_stats = pd.read_sql('SELECT sire_name, AVG(CASE WHEN "着順"=\'1\' THEN 1.0 ELSE 0.0 END) as sire_win_rate, AVG(CASE WHEN "着順" IN (\'1\', \'2\') THEN 1.0 ELSE 0.0 END) as sire_rentai_rate FROM raw_race_results r JOIN horses h ON r."馬名"=h.horse_name GROUP BY sire_name', _engine)
+    b_stats = pd.read_sql('SELECT bms_name, AVG(CASE WHEN "着順"=\'1\' THEN 1.0 ELSE 0.0 END) as bms_win_rate, AVG(CASE WHEN "着順" IN (\'1\', \'2\') THEN 1.0 ELSE 0.0 END) as bms_rentai_rate FROM raw_race_results r JOIN horses h ON r."馬名"=h.horse_name GROUP BY bms_name', _engine)
+    return s_stats, b_stats
+
+@st.cache_data(ttl=3600)
+def get_horse_pedigree_info(_engine, horse_names_tuple):
+    names_str = "', '".join([n.replace("'", "''") for n in horse_names_tuple])
+    query = f"SELECT horse_name, sire_name, bms_name FROM horses WHERE horse_name IN ('{names_str}')"
+    return pd.read_sql(query, _engine)
 
 def predict_race(df, model_pack, encoders, _engine):
     model = model_pack['model']
     calibrator = model_pack['calibrator']
     feature_cols = model_pack['features']
 
-    j_map, missing_j = resolve_jockey_names(_engine, df['騎手'].unique().tolist())
+    j_map, missing_j = resolve_jockey_names(_engine, tuple(df['騎手'].unique().tolist()))
     df['騎手_db'] = df['騎手'].map(j_map)
     # 修正: 戻り値変更に対応
-    t_map, missing_t, t_debug = resolve_trainer_names(_engine, df['調教師'].unique().tolist())
+    t_map, missing_t, t_debug = resolve_trainer_names(_engine, tuple(df['調教師'].unique().tolist()))
     df['調教師_db'] = df['調教師'].map(t_map)
     
     missing_info = {'jockey': missing_j, 'trainer': missing_t, 'trainer_debug': t_debug}
@@ -1167,8 +1281,8 @@ def predict_race(df, model_pack, encoders, _engine):
     }
     
     try:
-        j_stats = pd.read_sql('SELECT "騎手", AVG(CASE WHEN "着順"=\'1\' THEN 1.0 ELSE 0.0 END) as jockey_win_rate, AVG(CASE WHEN "着順"<=\'2\' THEN 1.0 ELSE 0.0 END) as jockey_rentai_rate, AVG(CASE WHEN "着順"<=\'2\' THEN 1.0 ELSE 0.0 END) as jockey_course_rentai_rate FROM raw_race_results GROUP BY "騎手"', _engine)
-        t_stats = pd.read_sql('SELECT "調教師", AVG(CASE WHEN "着順"=\'1\' THEN 1.0 ELSE 0.0 END) as trainer_win_rate FROM raw_race_results GROUP BY "調教師"', _engine)
+        j_stats = get_global_jockey_stats(_engine)
+        t_stats = get_global_trainer_stats(_engine)
         
         df = df.merge(j_stats, left_on='騎手_db', right_on='騎手', how='left', suffixes=('', '_j'))
         df = df.merge(t_stats, left_on='調教師_db', right_on='調教師', how='left', suffixes=('', '_t'))
@@ -1178,7 +1292,7 @@ def predict_race(df, model_pack, encoders, _engine):
     except: pass
 
     target_date = df['date'].iloc[0]
-    horse_stats, hist_debug = calc_horse_history(_engine, df['馬名'].tolist(), target_date)
+    horse_stats, hist_debug = calc_horse_history(_engine, tuple(df['馬名'].tolist()), target_date)
     diag_data['sql_debug'] = hist_debug
     
     if not horse_stats.empty:
@@ -1196,7 +1310,7 @@ def predict_race(df, model_pack, encoders, _engine):
         SELECT "馬名", count(*) as runs, SUM(CASE WHEN "着順" IN ('1','2','3') THEN 1 ELSE 0 END) as top3 
         FROM raw_race_results 
         WHERE "馬名" IN {names_str_sql}
-          AND "開催場所" LIKE '%%{place_name}%%'
+          AND "開催場所" = '{place_name}'
           AND "コース区分" = '{c_type}'
         GROUP BY "馬名"
         """
@@ -1216,10 +1330,12 @@ def predict_race(df, model_pack, encoders, _engine):
         if jockeys:
             j_str = str(jockeys) if len(jockeys) > 1 else f"('{jockeys[0]}')"
             jc_query = f"""
-            SELECT "騎手", AVG(CASE WHEN "着順"='1' THEN 1.0 ELSE 0.0 END) as jockey_course_win_rate
+            SELECT "騎手", 
+                   AVG(CASE WHEN "着順"='1' THEN 1.0 ELSE 0.0 END) as jockey_course_win_rate,
+                   AVG(CASE WHEN "着順" IN ('1', '2') THEN 1.0 ELSE 0.0 END) as jockey_course_rentai_rate
             FROM raw_race_results
             WHERE "騎手" IN {j_str}
-              AND "開催場所" LIKE '%%{place_name}%%'
+              AND "開催場所" = '{place_name}'
               AND "コース区分" = '{c_type}'
             GROUP BY "騎手"
             """
@@ -1247,7 +1363,7 @@ def predict_race(df, model_pack, encoders, _engine):
         cw_query = f"""
         SELECT "枠番", AVG(CASE WHEN "着順"='1' THEN 1.0 ELSE 0.0 END) as course_waku_win_rate
         FROM raw_race_results
-        WHERE "開催場所" LIKE '%%{place_name}%%'
+        WHERE "開催場所" = '{place_name}'
           AND "コース区分" = '{c_type}'
           AND "距離" = '{int(df['距離'].iloc[0])}'
         GROUP BY "枠番"
@@ -1267,14 +1383,12 @@ def predict_race(df, model_pack, encoders, _engine):
             df[col] = 0.0
 
     try:
-        names_str = "', '".join([n.replace("'", "''") for n in df['馬名'].tolist()])
-        ped_info = pd.read_sql(f"SELECT horse_name, sire_name, bms_name FROM horses WHERE horse_name IN ('{names_str}')", _engine)
+        ped_info = get_horse_pedigree_info(_engine, tuple(df['馬名'].tolist()))
         if not ped_info.empty:
             ped_info = ped_info.drop_duplicates('horse_name')
             df = df.merge(ped_info, left_on='馬名', right_on='horse_name', how='left')
             
-            s_stats = pd.read_sql('SELECT sire_name, AVG(CASE WHEN "着順"=\'1\' THEN 1.0 ELSE 0.0 END) as sire_win_rate, AVG(CASE WHEN "着順"<=\'2\' THEN 1.0 ELSE 0.0 END) as sire_rentai_rate FROM raw_race_results r JOIN horses h ON r."馬名"=h.horse_name GROUP BY sire_name', _engine)
-            b_stats = pd.read_sql('SELECT bms_name, AVG(CASE WHEN "着順"=\'1\' THEN 1.0 ELSE 0.0 END) as bms_win_rate, AVG(CASE WHEN "着順"<=\'2\' THEN 1.0 ELSE 0.0 END) as bms_rentai_rate FROM raw_race_results r JOIN horses h ON r."馬名"=h.horse_name GROUP BY bms_name', _engine)
+            s_stats, b_stats = get_global_pedigree_stats(_engine)
             df = df.merge(s_stats, on='sire_name', how='left')
             df = df.merge(b_stats, on='bms_name', how='left')
             
@@ -1284,7 +1398,9 @@ def predict_race(df, model_pack, encoders, _engine):
                 surf_query = f"""
                 SELECT h.sire_name, AVG(CASE WHEN r."着順"='1' THEN 1.0 ELSE 0.0 END) as sire_surface_win_rate
                 FROM raw_race_results r JOIN horses h ON r."馬名"=h.horse_name 
-                WHERE h.sire_name IN {s_str} AND r."コース区分" = '{c_type}'
+                WHERE h.sire_name IN {s_str} 
+                  AND r."コース区分" = '{c_type}'
+                  AND r."date" < '{target_date}'
                 GROUP BY h.sire_name
                 """
                 surf_df = pd.read_sql(surf_query, _engine)
@@ -1440,7 +1556,7 @@ def process_one_race(race, model, encoders, engine, driver=None):
     try:
         df = scrape_race_data(race['url'], driver=driver)
         if df is not None and not df.empty:
-            res, _, _, _, missing_info, _ = predict_race(df, model, encoders, engine)
+            res, debug, X_renamed, diag_data, missing_info, trace_df = predict_race(df, model, encoders, engine)
             
             # 結果サマリー
             top_ai = res.iloc[0]
@@ -1493,7 +1609,11 @@ def process_one_race(race, model, encoders, engine, driver=None):
                 'ranks': ranks,
                 'win_p': win_p,
                 'place_p': place_p,
-                'missing_info': missing_info
+                'missing_info': missing_info,
+                'debug': debug,
+                'X_renamed': X_renamed,
+                'diag_data': diag_data,
+                'trace_df': trace_df
             }
         return {'status': 'empty', 'race': race}
     except Exception as e:
@@ -1559,6 +1679,7 @@ def scan_races(target_date, race_list, model, encoders, engine):
     progress_bar = st.progress(0)
     status_text = st.empty()
     status_text.text("🚀 Initializing parallel workers...")
+    render_waiting_trivia() # ★追加: スキャン中もトリビアを表示
 
     # 新馬・障害を除外したリストを作成
     target_races = [r for r in race_list if "新馬" not in r['label'] and "障害" not in r['label']]
@@ -1568,8 +1689,8 @@ def scan_races(target_date, race_list, model, encoders, engine):
         status_text.text("No target races found.")
         return results
 
-    # リストを2分割する (クラウドのメモリ制限を考慮し、並列数は2とする)
-    num_workers = 2
+    # リストを分割する (メモリに余裕があれば並列数を増やす)
+    num_workers = 4
     chunks = [target_races[i::num_workers] for i in range(num_workers)]
     
     # メインスレッドのコンテキストを取得
@@ -1635,6 +1756,18 @@ def scan_races(target_date, race_list, model, encoders, engine):
                     if data['is_ai_target']: 
                         # ここも ai_hit_df を使う
                         results['ai'].append({'race': race['label'], 'url': race['url'], 'hits': data['ai_hit_df'], 'grade': race['grade']})
+                    
+                    # ★追加: キャッシュに詳細データを保存
+                    if 'prediction_cache' not in st.session_state:
+                         st.session_state.prediction_cache = {}
+                    st.session_state.prediction_cache[race['url']] = {
+                        'res': res,
+                        'debug': data['debug'],
+                        'X_renamed': data['X_renamed'],
+                        'diag_data': data['diag_data'],
+                        'missing_info': data['missing_info'],
+                        'trace_df': data['trace_df']
+                    }
                     
                     # 成績集計
                     ranks = data['ranks']
@@ -1717,6 +1850,7 @@ def main():
     if 'expander_states' not in st.session_state: st.session_state.expander_states = {'pace': True, 'hole': False, 'ai': False}
     if 'missing_data' not in st.session_state: st.session_state.missing_data = {'jockey': set(), 'trainer': set()}
     if 'trainer_debug_all' not in st.session_state: st.session_state.trainer_debug_all = pd.DataFrame()
+    if 'prediction_cache' not in st.session_state: st.session_state.prediction_cache = {}
     
     st.markdown('<div class="input-panel">', unsafe_allow_html=True)
     st.markdown("### 📅 Race Selection")
@@ -1932,20 +2066,48 @@ def main():
         
         st.markdown(f"### 🎯 AI Forecast: {st.session_state.selected_race_name or '指定レース'}")
         
-        with st.spinner("🦄 AIが全集中で予想中..."):
-            df_in = scrape_race_data(target)
-            if df_in is not None and not df_in.empty:
+        # 予測実行
+        with st.status("🔮 AIが全集中で予想中...", expanded=True) as status:
+            # ★追加: キャッシュがあればそれを利用
+            cached_data = st.session_state.prediction_cache.get(target)
+            
+            if cached_data:
+                st.write("📁 キャッシュからデータを読み込んでいます...")
+                res = cached_data['res']
+                debug = cached_data['debug']
+                X_renamed = cached_data['X_renamed']
+                diag_data = cached_data['diag_data']
+                missing_info = cached_data['missing_info']
+                trace_df = cached_data['trace_df']
+            else:
+                st.write("📡 最新のレースデータを取得しています...")
+                render_waiting_trivia()
+                df_in = scrape_race_data(target)
+                if df_in is not None and not df_in.empty:
+                    try:
+                        st.write("🧠 特徴量を生成し、AIモデルで評価しています...")
+                        res, debug, X_renamed, diag_data, missing_info, trace_df = predict_race(df_in, model, encoders, engine)
+                    except Exception as e:
+                        st.error(f"予測エラー: {e}")
+                        res = pd.DataFrame()
+                else:
+                    st.error("レース情報の取得に失敗しました")
+                    res = pd.DataFrame()
+
+            if not res.empty:
                 try:
-                    res, debug, X_renamed, diag_data, missing_info, trace_df = predict_race(df_in, model, encoders, engine)
                     res = res.drop_duplicates(subset=['馬名'])
                     
                     if not res.empty:
+                        st.write("✍️ Geminiが推奨コメントを執筆しています...")
                         top = res.iloc[0]
-                        
                         # ★ ここでGeminiを呼び出す！
                         # ★ 変更点: 戻り値を2つ受け取る
-                        with st.spinner("🦄 Geminiが寸評を執筆中..."):
-                            ai_comment, used_model = generate_gemini_comment(top)
+                        ai_comment, used_model = generate_gemini_comment(top)
+                        status.update(label="✅ 思考完了！", state="complete", expanded=False)
+        
+                        # フェードイン効果付きで表示
+                        st.markdown('<div class="fade-in">', unsafe_allow_html=True)
 
                         # Hero Cardの下にコメントを表示するエリアを追加
                         st.markdown(render_hero_card(top), unsafe_allow_html=True)
@@ -2043,6 +2205,7 @@ def main():
                         
                         csv = disp.to_csv(index=False).encode('utf-8_sig')
                         st.download_button(label="📥 予想結果をCSVでダウンロード", data=csv, file_name=f"prediction_{datetime.date.today()}.csv", mime="text/csv")
+                        st.markdown('</div>', unsafe_allow_html=True) # Close fade-in
                         
                         with st.expander("🕵️‍♂️ AI内部データ診断", expanded=False):
                             tabs_diag = st.tabs(["Hero Card Source", "Calculation Trace", "Prev Race Lookup", "血統", "騎手", "調教師", "Full Data", "Advanced Debug"])
@@ -2086,9 +2249,9 @@ def main():
                                      st.write("Trainer Matching Logic Trace:")
                                      st.dataframe(missing_info['trainer_debug'])
 
-                    else: st.warning("有効なデータがありません")
                 except Exception as e: st.error(f"エラー: {e}")
-            else: st.error("レース情報の取得に失敗しました")
+            else: st.warning("有効なデータがありません")
+
 
 if __name__ == '__main__':
     main()
