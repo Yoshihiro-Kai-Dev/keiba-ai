@@ -68,7 +68,7 @@ def generate_gemini_comment(row):
     ・脚質傾向: {"先行" if row.get('run_style_ratio', 0) > 0.5 else "差し・追込"}
     
     【執筆ルール（絶対遵守）】
-    1. **100文字以内**で短くまとめること。
+    1. **200文字程度**でわかりやすくまとめること。
     2. 「～です」「～ます」は禁止。「～だ！」「～に違いない！」と断定口調にする。
     3. 数値を並べるのではなく、「驚異の勝率」「安定感抜群」といった**感情的な言葉**に変換する。
     4. 最後に必ず、「迷わず買え！」「本命はこの馬だ！」といった力強い一言で締める。
@@ -80,7 +80,7 @@ def generate_gemini_comment(row):
     # 順番にモデルを試すループ
     for model_name in candidate_models:
         try:
-            # print(f"Trying model: {model_name}...") # デバッグ用
+            print(f"Trying model: {model_name}...") # デバッグ用
             model = genai.GenerativeModel(model_name)
             response = model.generate_content(prompt)
             
