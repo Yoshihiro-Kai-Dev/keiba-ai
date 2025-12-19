@@ -50,7 +50,7 @@ def generate_gemini_comment(row):
         'gemini-pro-latest',
         'gemini-flash-latest',
         'gemini-3-pro-preview',
-        # 'gemini-3-flash-preview',
+        'gemini-3-flash-preview',
         'gemini-2.5-pro',
         'gemini-2.5-flash',
         'gemini-2.5-flash-preview-09-2025',
@@ -81,10 +81,10 @@ def generate_gemini_comment(row):
         # 'gemini-2.5-flash-native-audio-preview-12-2025',
     ]
 
-    # プロンプト（前回と同じ熱血版）
+    # プロンプト
     prompt = f"""
     あなたは日本一の競馬予想AIです。以下のデータに基づき、この馬が「なぜ買いなのか」を
-    競馬新聞のベテラン記者が書くような、読み手の心を揺さぶる「熱い推奨コメント」で書いてください。
+    競馬新聞のベテラン記者が書くような、読み手の心を揺さぶる「熱くも冷静な推奨コメント」で書いてください。
 
     【馬データ】
     ・馬名: {row['馬名']}
@@ -99,7 +99,7 @@ def generate_gemini_comment(row):
     2. 「～です」「～ます」は禁止。「～だ！」「～に違いない！」と断定口調にする。
     3. 数値を並べるのではなく、「驚異の勝率」「安定感抜群」といった**感情的な言葉**に変換する。
     4. 最後に必ず、「迷わず買え！」「本命はこの馬だ！」といった力強い一言で締める。
-    5. 競馬ファンが好む「専門用語（脚質、展開、手綱捌きなど）」を自然に混ぜる。
+    5. 競馬ファンが好む「専門用語（脚質、展開、手綱捌き、血統など）」を自然に混ぜる。
     """
 
     genai.configure(api_key=api_key)
