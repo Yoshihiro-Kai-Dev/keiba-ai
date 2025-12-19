@@ -93,7 +93,7 @@ def generate_gemini_comment(row):
             else:
                 return f"致命的エラー: {error_msg}", model_name
 
-    return "🚫 本日のAI予測利用枠（全モデル合計）を使い切りました。明日またお試しください。", "Limit Reached"
+    return f"🚫 本日のAI予測利用枠（全モデル合計）を使い切りました。明日またお試しください。\n詳細: {'; '.join(errors)}", "All Failed"
 
 # ---------------------------------------------------------
 # 1. 設定 & ページ初期化
