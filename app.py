@@ -92,7 +92,7 @@ def generate_gemini_comment(row):
     ・調教師: {row['調教師']} (勝率: {row.get('trainer_win_rate', 0)*100:.1f}%)
     ・父: {row.get('sire_name', '不明')} (勝率: {row.get('sire_win_rate', 0)*100:.1f}%)
     ・母父: {row.get('bms_name', '不明')} (勝率: {row.get('bms_win_rate', 0)*100:.1f}%)
-    ・AI信頼度: {row['AIスコア']*100:.1f}% (高い！)
+    ・AI評価値 (Rating): {int(row.get('AI Rating', 0))}/99 （99点満点の偏差値的なRating）
     ・近走3走平均着順: {row.get('recent_rank_avg', '不明')}位
     ・脚質傾向: {"先行" if row.get('run_style_ratio', 0) > 0.5 else "差し・追込"}
     
@@ -101,7 +101,7 @@ def generate_gemini_comment(row):
     2. 「～です」「～ます」は禁止。「～だ！」「～に違いない！」と断定口調にする。
     3. 数値を並べるのではなく、「驚異の勝率」「安定感抜群」といった**感情的な言葉**に変換する。
     4. 最後に必ず、「迷わず買え！」「本命はこの馬だ！」といった力強い一言で締める。
-    5. 競馬ファンが好む「専門用語（脚質、展開、手綱捌き、血統など）」を自然に混ぜる。
+    5. 競馬ファンが好む「専門用語（脚質、展開、騎手や馬の特徴、血統など）」を自然に混ぜる。
     """
 
     genai.configure(api_key=api_key)
