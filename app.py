@@ -32,65 +32,74 @@ else:
     GEMINI_API_KEY = None 
 
 def generate_gemini_comment(row):
-    # キーが無い場合は早期リターン
-    if not GEMINI_API_KEY:
-        return "⚠️ APIキー設定が必要です (.streamlit/secrets.toml)"
-
-    try:
-        genai.configure(api_key=GEMINI_API_KEY)
-        
-        # ★最新モデルを指定
-        model = genai.GenerativeModel('gemini-flash-lite-latest')
-    except:
-        print("モデル一覧の取得に失敗しました")
-# --------------------------------------
-
-def generate_gemini_comment(row):
     """
     特徴量データを受け取り、Geminiに寸評を書かせる関数
+    (自動フォールバック機能付き: 3-flash -> 2.5-flash -> 2.5-lite)
     """
-    # ★ APIキーの読み込み (secrets.toml推奨)
+    # ★ APIキーの読み込み
     api_key = None
     if "GEMINI_API_KEY" in st.secrets:
         api_key = st.secrets["GEMINI_API_KEY"]
     else:
-        # secretsがない場合のフォールバック
         api_key = GEMINI_API_KEY 
 
     if not api_key:
-        return "APIキーが設定されていません。"
+        return "⚠️ APIキー設定が必要です (.streamlit/secrets.toml)"
 
-    try:
-        genai.configure(api_key=api_key)
-        
-        # ★★★ ここを修正しました (リストにあった最新モデルを指定) ★★★
-        model = genai.GenerativeModel('gemini-flash-lite-latest')
+    # ★★★ ここがポイント：優先順位リスト ★★★
+    # 上から順にトライします
+    candidate_models = [
+        'gemini-3-flash',       # ① 最優先（上限：20/日）
+        'gemini-2.5-flash',     # ② 次点（上限：20/日）
+        'gemini-2.5-flash-lite' # ③ 最後の砦（上限：20/日）
+    ]
 
-        # プロンプトの作成（Liteモデル向け・熱血強化版）
-        prompt = f"""
-        あなたは日本一の競馬予想AIです。以下のデータに基づき、この馬が「なぜ買いなのか」を
-        競馬新聞のベテラン記者が書くような、読み手の心を揺さぶる「熱い推奨コメント」で書いてください。
+    # プロンプトの作成（全モデル共通・熱血版）
+    prompt = f"""
+    あなたは日本一の競馬予想AIです。以下のデータに基づき、この馬が「なぜ買いなのか」を
+    競馬新聞のベテラン記者が書くような、読み手の心を揺さぶる「熱い推奨コメント」で書いてください。
 
-        【馬データ】
-        ・馬名: {row['馬名']}
-        ・騎手: {row['騎手']} (勝率: {row.get('jockey_win_rate', 0)*100:.1f}%)
-        ・調教師: {row['調教師']} (勝率: {row.get('trainer_win_rate', 0)*100:.1f}%)
-        ・AI信頼度: {row['AIスコア']*100:.1f}% (高い！)
-        ・近走3走平均着順: {row.get('recent_rank_avg', '不明')}位
-        ・脚質傾向: {"先行" if row.get('run_style_ratio', 0) > 0.5 else "差し・追込"}
-        
-        【執筆ルール（絶対遵守）】
-        1. **200文字程度**でまとめること。
-        2. 「～です」「～ます」は禁止。「～だ！」「～に違いない！」と断定口調にする。
-        3. 数値を並べるのではなく、「驚異の勝率」「安定感抜群」といった**感情的な言葉**に変換する。
-        4. 最後に必ず、「迷わず買え！」「本命はこの馬だ！」といった力強い一言で締める。
-        5. 競馬ファンが好む「専門用語（脚質、展開、手綱捌きなど）」を自然に混ぜる。
-        """
+    【馬データ】
+    ・馬名: {row['馬名']}
+    ・騎手: {row['騎手']} (勝率: {row.get('jockey_win_rate', 0)*100:.1f}%)
+    ・調教師: {row['調教師']} (勝率: {row.get('trainer_win_rate', 0)*100:.1f}%)
+    ・AI信頼度: {row['AIスコア']*100:.1f}% (高い！)
+    ・近走3走平均着順: {row.get('recent_rank_avg', '不明')}位
+    ・脚質傾向: {"先行" if row.get('run_style_ratio', 0) > 0.5 else "差し・追込"}
+    
+    【執筆ルール（絶対遵守）】
+    1. **100文字以内**で短くまとめること。
+    2. 「～です」「～ます」は禁止。「～だ！」「～に違いない！」と断定口調にする。
+    3. 数値を並べるのではなく、「驚異の勝率」「安定感抜群」といった**感情的な言葉**に変換する。
+    4. 最後に必ず、「迷わず買え！」「本命はこの馬だ！」といった力強い一言で締める。
+    5. 競馬ファンが好む「専門用語（脚質、展開、手綱捌きなど）」を自然に混ぜる。
+    """
 
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        return f"AI寸評生成エラー: {str(e)}"
+    genai.configure(api_key=api_key)
+
+    # 順番にモデルを試すループ
+    for model_name in candidate_models:
+        try:
+            # print(f"Trying model: {model_name}...") # デバッグ用
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            
+            # 成功したら、どのモデルで生成したか分かるようにログを残しても良いですが、
+            # ここではシンプルにテキストだけ返します。
+            return response.text
+
+        except Exception as e:
+            error_msg = str(e)
+            # エラーが「制限超過(429)」や「見つからない(404)」なら次へ進む
+            if "429" in error_msg or "Quota" in error_msg or "404" in error_msg or "not found" in error_msg:
+                # 失敗したらループを継続（次のモデルへ）
+                continue
+            else:
+                # その他の致命的なエラー（認証失敗など）はリトライしても無駄なので返す
+                return f"エラー発生 ({model_name}): {error_msg}"
+
+    # ループを抜けた＝全モデルで失敗した
+    return "🚫 本日のAI予測利用枠（全モデル合計）を使い切りました。明日またお試しください。"
 
 # ---------------------------------------------------------
 # 1. 設定 & ページ初期化
