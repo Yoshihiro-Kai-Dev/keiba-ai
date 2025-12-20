@@ -1808,11 +1808,13 @@ def scan_races(target_date, race_list, model, encoders, engine):
                         def update(cat, horse):
                             stats[cat]['bets'] += 1
                             r = ranks.get(horse['馬番'], 99)
-                            if r == 1: stats[cat]['win_ret'] += win_p.get(horse['馬番'], 0)
+                            if r == 1 and win_p: stats[cat]['win_ret'] += win_p.get(horse['馬番'], 0)
                             if r <= 3:
                                 stats[cat]['hit_count'] += 1
-                                stats[cat]['place_ret'] += place_p.get(horse['馬番'], 0)
-                                st.session_state.hits_details.append({"戦略": cat, "レース": race['label'], "馬名": horse['馬名'], "着順": r, "単勝": win_p.get(horse['馬番'], 0), "複勝": place_p.get(horse['馬番'], 0)})
+                                if place_p: stats[cat]['place_ret'] += place_p.get(horse['馬番'], 0)
+                                win_val = win_p.get(horse['馬番'], 0) if win_p else 0
+                                place_val = place_p.get(horse['馬番'], 0) if place_p else 0
+                                st.session_state.hits_details.append({"戦略": cat, "レース": race['label'], "馬名": horse['馬名'], "着順": r, "単勝": win_val, "複勝": place_val})
 
                         if data['is_ai_target']: update('ai', data['top_ai'])
                         if not data['pace_hits'].empty: update('pace', data['pace_hits'].iloc[0])
