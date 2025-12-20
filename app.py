@@ -1567,18 +1567,22 @@ def process_one_race(race, model, encoders, engine, driver=None):
             
             # 1. 展開の神 (スコア順にソートして先頭1頭をBUY対象にする)
             pace_hits = res[res['判定'] == "🚀 展開の神"].copy()
+            pace_buy_idx = -1
             if not pace_hits.empty:
                 pace_hits = pace_hits.sort_values(['AIスコア', 'raw_preds'], ascending=[False, False])
                 pace_hits['is_bet_target'] = False
                 # 先頭行(最高スコア)をTrueに
                 pace_hits.iat[0, pace_hits.columns.get_loc('is_bet_target')] = True
+                pace_buy_idx = pace_hits.index[0]
             
             # 2. 穴馬 (同様にソートして先頭1頭をBUY対象にする)
             hole_hits = res[res['判定_穴'] == "💣 穴馬の極意"].copy()
+            hole_buy_idx = -1
             if not hole_hits.empty:
                 hole_hits = hole_hits.sort_values(['AIスコア', 'raw_preds'], ascending=[False, False])
                 hole_hits['is_bet_target'] = False
                 hole_hits.iat[0, hole_hits.columns.get_loc('is_bet_target')] = True
+                hole_buy_idx = hole_hits.index[0]
             
             try: top_odds = float(str(top_ai['オッズ']).replace('-','0'))
             except: top_odds = 0
@@ -1587,13 +1591,37 @@ def process_one_race(race, model, encoders, engine, driver=None):
             # 3. 鉄板 (条件を満たせばTrue)
             ai_hit_df = res.iloc[[0]].copy()
             ai_hit_df['is_bet_target'] = is_ai_target
+            ai_buy_idx = res.index[0] if is_ai_target else -1
 
-            # バッジ処理 (元のresに対して行う)
-            res['overlap_badges'] = [[] for _ in range(len(res))]
-            if is_ai_target: res.at[res.index[0], 'overlap_badges'].append("ai")
-            # 注意: ここでのループは元のresに対するものなので、マーク済みDFとは別管理
-            for idx in pace_hits.index: res.at[idx, 'overlap_badges'].append("pace")
-            for idx in hole_hits.index: res.at[idx, 'overlap_badges'].append("hole")
+            # バッジ処理 (各DFに対して行う)
+            # 注意: リスト内包表記で初期化しないと、全行が同じリストオブジェクトを参照してしまう
+            for df in [pace_hits, hole_hits, ai_hit_df]:
+                if not df.empty:
+                    df['overlap_badges'] = [[] for _ in range(len(df))]
+
+            # Pace Listへのバッジ付与
+            if not pace_hits.empty:
+                for idx in pace_hits.index:
+                    badges = ['pace']
+                    if idx == hole_buy_idx: badges.append('hole')
+                    if idx == ai_buy_idx: badges.append('ai')
+                    pace_hits.at[idx, 'overlap_badges'] = badges
+
+            # Hole Listへのバッジ付与
+            if not hole_hits.empty:
+                for idx in hole_hits.index:
+                    badges = ['hole']
+                    if idx == pace_buy_idx: badges.append('pace')
+                    if idx == ai_buy_idx: badges.append('ai')
+                    hole_hits.at[idx, 'overlap_badges'] = badges
+
+            # AI Listへのバッジ付与
+            if not ai_hit_df.empty:
+                 for idx in ai_hit_df.index:
+                    badges = ['ai']
+                    if idx == pace_buy_idx: badges.append('pace')
+                    if idx == hole_buy_idx: badges.append('hole')
+                    ai_hit_df.at[idx, 'overlap_badges'] = badges
 
             # 成績集計用データ
             race_id = df.iloc[0]['race_id']
