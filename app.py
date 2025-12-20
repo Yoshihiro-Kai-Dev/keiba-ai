@@ -1154,6 +1154,8 @@ def calc_horse_history(_engine, horse_names_tuple, target_date):
     clean_names = [re.sub(r'\s+', '', str(n)) for n in horse_names]
     names_str = "', '".join([n.replace("'", "''") for n in clean_names])
     
+
+
     query = f"""
     SELECT "date", "馬名", "着順", "上り", "着差", "通過", "賞金(万円)", "距離", "コース区分", "騎手", "race_id"
     FROM raw_race_results
@@ -1176,6 +1178,8 @@ def calc_horse_history(_engine, horse_names_tuple, target_date):
         hist_df['馬名_clean'] = hist_df['馬名'].astype(str).apply(lambda x: re.sub(r'\s+', '', x))
         hist_df['騎手_clean'] = hist_df['騎手'].astype(str).apply(lambda x: re.sub(r'\s+', '', x))
         
+
+
         # 各レースの頭数を取得して正規化
         rids = tuple(hist_df['race_id'].dropna().unique())
         if rids:
@@ -1193,63 +1197,79 @@ def calc_horse_history(_engine, horse_names_tuple, target_date):
 
         stats = []
         for horse in horse_names:
-            h_clean = re.sub(r'\s+', '', str(horse))
-            h_data = hist_df[hist_df['馬名_clean'] == h_clean]
-            
-            if h_data.empty:
+            try:
+                h_clean = re.sub(r'\s+', '', str(horse))
+                h_data = hist_df[hist_df['馬名_clean'] == h_clean]
+                
+                if h_data.empty:
+                    stats.append({
+                        '馬名': horse, 'interval_weeks': 0, 'prev_rank': 0, 'prev_3f': 36.0, 'prev_margin': 0.5, 
+                        'recent_3f_avg': 36.0, 'recent_rank_avg': 8.0, 'run_style_ratio': 0, 
+                        'total_wins': 0, 'total_money': 0, 'win_ratio': 0,
+                        'prev_distance': 1600, 'prev_course_type': 'Unknown', 'prev_jockey': 'Unknown',
+                        'nige_rate': 0, 'senko_rate': 0, 'avg_pos_rate': 0.5,
+                        'std_recent_3f': 0, 'std_recent_rank': 0,
+                        'recent_history_summary': 'データなし'
+                    })
+                    continue
+                
+                last = h_data.iloc[-1]
+                
+                interval = (pd.to_datetime(target_date) - last['date']).days / 7
+                recent = h_data.tail(3)
+                rec_3f = recent['上り'].mean()
+                rec_rank = recent['着順'].mean()
+                recent5 = h_data.tail(5)
+                
+                nige_rate = recent5['is_nige'].mean()
+                senko_rate = recent5['is_senko'].mean()
+                avg_pos_rate = recent5['pos_rate'].mean()
+                
+                run_style = senko_rate
+                wins = h_data['is_win'].sum()
+                total_money = h_data['money'].sum()
+                cnt = len(h_data)
+                
+                # 過去走サマリーの生成
+                history_rows = []
+                for i, r in h_data.tail(3).iterrows():
+                    hist_str = f"{r['date'].strftime('%Y/%m/%d')} {r['距離']}m({r['コース区分']}) : {int(r['着順'])}着 (上り{r['上り']})"
+                    history_rows.append(hist_str)
+                history_summary = "\n".join(history_rows) if history_rows else "過去走データなし"
+
+                stats.append({
+                    '馬名': horse,
+                    'interval_weeks': interval,
+                    'prev_rank': last['着順'],
+                    'prev_3f': last['上り'],
+                    'prev_margin': last['着差'],
+                    'prev_distance': last['距離'],        
+                    'prev_course_type': last['コース区分'], 
+                    'prev_jockey': last['騎手_clean'],    
+                    'recent_3f_avg': rec_3f,
+                    'recent_rank_avg': rec_rank,
+                    'run_style_ratio': run_style,
+                    'total_wins': wins,
+                    'total_money': total_money,
+                    'win_ratio': wins/cnt if cnt>0 else 0,
+                    'nige_rate': nige_rate,
+                    'senko_rate': senko_rate,
+                    'avg_pos_rate': avg_pos_rate,
+                    'recent_history_summary': history_summary
+                })
+            except Exception as e:
+                # Log error to console only
+                print(f"History Loop Error for {horse}: {e}")
+                # Fallback for error case
                 stats.append({
                     '馬名': horse, 'interval_weeks': 0, 'prev_rank': 0, 'prev_3f': 36.0, 'prev_margin': 0.5, 
                     'recent_3f_avg': 36.0, 'recent_rank_avg': 8.0, 'run_style_ratio': 0, 
                     'total_wins': 0, 'total_money': 0, 'win_ratio': 0,
-                    'prev_distance': 0, 'prev_course_type': 'Unknown', 'prev_jockey': 'Unknown',
-                    'nige_rate': 0, 'senko_rate': 0, 'avg_pos_rate': 0.5
+                    'prev_distance': 1600, 'prev_course_type': 'Unknown', 'prev_jockey': 'Unknown',
+                    'nige_rate': 0, 'senko_rate': 0, 'avg_pos_rate': 0.5,
+                    'std_recent_3f': 0, 'std_recent_rank': 0,
+                    'recent_history_summary': f'Error: {str(e)}'
                 })
-                continue
-            
-            last = h_data.iloc[-1]
-            interval = (pd.to_datetime(target_date) - last['date']).days / 7
-            recent = h_data.tail(3)
-            rec_3f = recent['上り'].mean()
-            rec_rank = recent['着順'].mean()
-            recent5 = h_data.tail(5)
-            
-            nige_rate = recent5['is_nige'].mean()
-            senko_rate = recent5['is_senko'].mean()
-            avg_pos_rate = recent5['pos_rate'].mean()
-            
-            run_style = senko_rate
-            wins = h_data['is_win'].sum()
-            total_money = h_data['money'].sum()
-            cnt = len(h_data)
-            
-            # 過去走サマリーの生成
-            history_rows = []
-            for i, r in h_data.tail(3).iterrows():
-                # 「1着 (上り34.5)」のような形式
-                hist_str = f"{r['date'].strftime('%Y/%m/%d')} {r['距離']}m({r['コース区分']}) : {int(r['着順'])}着 (上り{r['上り']})"
-                history_rows.append(hist_str)
-            history_summary = "\n".join(history_rows) if history_rows else "過去走データなし"
-
-            stats.append({
-                '馬名': horse,
-                'interval_weeks': interval,
-                'prev_rank': last['着順'],
-                'prev_3f': last['上り'],
-                'prev_margin': last['着差'],
-                'prev_distance': last['距離'],        
-                'prev_course_type': last['コース区分'], 
-                'prev_jockey': last['騎手_clean'],    
-                'recent_3f_avg': rec_3f,
-                'recent_rank_avg': rec_rank,
-                'run_style_ratio': run_style,
-                'total_wins': wins,
-                'total_money': total_money,
-                'win_ratio': wins/cnt if cnt>0 else 0,
-                'nige_rate': nige_rate,
-                'senko_rate': senko_rate,
-                'avg_pos_rate': avg_pos_rate,
-                'recent_history_summary': history_summary
-            })
         return pd.DataFrame(stats), debug_info
     except Exception as e:
         return pd.DataFrame(), {'error': str(e)}
@@ -1315,6 +1335,8 @@ def predict_race(df, model_pack, encoders, _engine):
     
     if not horse_stats.empty:
         df = df.merge(horse_stats, on='馬名', how='left')
+
+
     
     # Advanced Features Implementation (SQL)
     place_name = df['開催場所'].iloc[0]
