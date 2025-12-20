@@ -345,8 +345,21 @@ def load_custom_css():
             .hero-stats-grid {{ grid-template-columns: repeat(1, 1fr); }}
             .hero-horse {{ margin-top: 10px; font-size: 1.8rem; }}
             .report-val-sm {{ font-size: 1.3rem; }}
-            .hero-badges {{ position: static; margin-bottom: 10px; justify-content: center; transform: scale(0.9); }}
-            .hero-card {{ padding: 15px; }}
+            .hero-badges {{ position: static; justify-content: flex-start; margin-bottom: 10px; flex-wrap: wrap; transform: none; }}
+            .hero-card {{ padding: 15px; display: flex; flex-direction: column; }}
+            .hero-rating-box {{ position: static; margin: 10px auto; width: 100%; box-shadow: none; border: 1px dashed #eee; }}
+            
+            /* Mobile: List Card Layout Fix */
+            .ai-list-card {{ display: flex; flex-direction: column; position: relative; padding-top: 10px; }}
+            .ai-card-badges {{ 
+                position: static; 
+                margin-top: 5px; 
+                margin-bottom: 5px; 
+                justify-content: flex-end; 
+                width: 100%; 
+                order: -1; 
+            }}
+            .ai-list-card > div:nth-child(2) {{ order: -2; }} /* Horse Name */
         }}
         
         .to-top-btn {{
