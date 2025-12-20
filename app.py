@@ -1792,14 +1792,14 @@ def scan_races(target_date, race_list, model, encoders, engine):
                     # 結果リストへの追加
                     # ★変更: マーク付きのDF (pace_hits, hole_hits, ai_hit_df) を使用する
                     if not data['pace_hits'].empty: 
-                        results['pace'].append({'race': race['label'], 'url': race['url'], 'hits': data['pace_hits'], 'grade': race['grade']})
+                        results['pace'].append({'race': race['label'], 'url': race['url'], 'hits': data['pace_hits'], 'grade': race['grade'], 'time': race.get('time', '99:99')})
                     
                     if not data['hole_hits'].empty: 
-                        results['hole'].append({'race': race['label'], 'url': race['url'], 'hits': data['hole_hits'], 'grade': race['grade']})
+                        results['hole'].append({'race': race['label'], 'url': race['url'], 'hits': data['hole_hits'], 'grade': race['grade'], 'time': race.get('time', '99:99')})
                     
                     if data['is_ai_target']: 
                         # ここも ai_hit_df を使う
-                        results['ai'].append({'race': race['label'], 'url': race['url'], 'hits': data['ai_hit_df'], 'grade': race['grade']})
+                        results['ai'].append({'race': race['label'], 'url': race['url'], 'hits': data['ai_hit_df'], 'grade': race['grade'], 'time': race.get('time', '99:99')})
                     
                     # ★追加: キャッシュに詳細データを保存
                     if 'prediction_cache' not in st.session_state:
@@ -1843,6 +1843,10 @@ def scan_races(target_date, race_list, model, encoders, engine):
                 # 万が一タイムアウトしたらループを抜ける
                 break
     
+    # 時系列ソート
+    for key in results:
+        results[key].sort(key=lambda x: x.get('time', '99:99'))
+
     status_text.empty()
     progress_bar.empty()
     st.session_state.report_stats = stats
