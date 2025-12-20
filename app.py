@@ -1156,7 +1156,7 @@ def calc_horse_history(_engine, horse_names_tuple, target_date):
     query = f"""
     SELECT "date", "馬名", "着順", "上り", "着差", "通過", "賞金(万円)", "距離", "コース区分", "騎手", "race_id"
     FROM raw_race_results
-    WHERE REPLACE(REPLACE("馬名", ' ', ''), '　', '') IN ('{names_str}') 
+    WHERE REGEXP_REPLACE("馬名", '\s+', '', 'g') IN ('{names_str}') 
       AND "date" < '{target_date}'
     ORDER BY "date" ASC
     """
