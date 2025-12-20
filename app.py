@@ -1423,10 +1423,20 @@ def predict_race(df, model_pack, encoders, _engine):
                 if not surf_df.empty:
                     df = df.merge(surf_df, on='sire_name', how='left')
             diag_data['pedigree'] = ped_info
+            diag_data['pedigree'] = ped_info
     except: pass
 
     if 'sire_name' not in df.columns: df['sire_name'] = '-'
     if 'bms_name' not in df.columns: df['bms_name'] = '-'
+    
+    # 履歴カラムのデフォルト初期化
+    history_cols_defaults = {
+        'prev_distance': 1600, 'prev_course_type': 'Unknown', 'prev_jockey': 'Unknown',
+        'nige_rate': 0, 'senko_rate': 0, 'avg_pos_rate': 0.5, 'run_style_ratio': 0,
+        'recent_rank_avg': 8.0, 'std_recent_3f': 0
+    }
+    for c, v in history_cols_defaults.items():
+        if c not in df.columns: df[c] = v
 
     df['距離'] = pd.to_numeric(df['距離'], errors='coerce').fillna(1600)
     df['prev_distance'] = pd.to_numeric(df['prev_distance'], errors='coerce').fillna(df['距離'])
