@@ -1063,7 +1063,7 @@ def resolve_trainer_names(_engine, target_trainers_tuple):
     target_trainers = list(target_trainers_tuple)
     try: 
         if 'db_trainers' not in st.session_state:
-            st.session_state.db_trainers = pd.read_sql('SELECT DISTINCT "調教師" FROM raw_race_results', _engine)['調教師'].dropna().unique().tolist()
+            st.session_state.db_trainers = pd.read_sql("SELECT DISTINCT REPLACE(\"調教師\", ']  ', '] ') as \"調教師\" FROM raw_race_results", _engine)['調教師'].dropna().unique().tolist()
         db_trainers = st.session_state.db_trainers
         
         db_map_clean = {}
@@ -1244,7 +1244,7 @@ def get_global_jockey_stats(_engine):
 
 @st.cache_data(ttl=3600)
 def get_global_trainer_stats(_engine):
-    return pd.read_sql('SELECT "調教師", AVG(CASE WHEN "着順"=\'1\' THEN 1.0 ELSE 0.0 END) as trainer_win_rate FROM raw_race_results GROUP BY "調教師"', _engine)
+    return pd.read_sql("SELECT REPLACE(\"調教師\", ']  ', '] ') as \"調教師\", AVG(CASE WHEN \"着順\"='1' THEN 1.0 ELSE 0.0 END) as trainer_win_rate FROM raw_race_results GROUP BY REPLACE(\"調教師\", ']  ', '] ')", _engine)
 
 @st.cache_data(ttl=3600)
 def get_global_pedigree_stats(_engine):
