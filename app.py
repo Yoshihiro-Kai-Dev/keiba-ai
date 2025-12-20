@@ -797,7 +797,7 @@ def render_report_card_dual(label, hit_count, bets, win_roi, place_roi):
         <div class="report-header">{label}</div>
         <div class="report-grid">
             <div class="report-item">
-                <div class="report-sublabel">的中率 (単/複)</div>
+                <div class="report-sublabel">的中率 (単 or 複)</div>
                 <div class="report-val-sm">{hit_rate_str}</div>
                 <div style="font-size:0.7em; color:var(--sub-text);">{hit_sub}</div>
             </div>
@@ -857,20 +857,34 @@ def get_race_list_by_date(target_date):
                 except: r_no_str = "R"
                 title_str = "レース詳細"
                 icon_grade = None
+                race_time = "99:99" # Default for sorting
+
                 link_tag = soup.find('a', href=re.compile(race_id))
                 if link_tag:
                     item_title = link_tag.find(class_='ItemTitle')
                     if item_title: title_str = item_title.get_text(strip=True)
                     else: title_str = link_tag.get('title') or link_tag.get_text(strip=True)
+                    
+                    # Extract Race Time (look for HH:MM pattern in the link text)
+                    link_text = link_tag.get_text(" ", strip=True)
+                    tm_match = re.search(r'(\d{2}:\d{2})', link_text)
+                    if tm_match: race_time = tm_match.group(1)
+
                     title_str = re.sub(r'^\d+R|\d{2}:\d{2}|[\[\(].*?[\]\)]', '', title_str).strip()
                     icon_grade = detect_grade_from_icon(link_tag)
                     if not icon_grade:
                         parent = link_tag.find_parent('li')
                         if parent: icon_grade = detect_grade_from_icon(parent)
                 grade = icon_grade if icon_grade else get_grade(title_str)
-                race_list.append({'label': f"【{place_name} {r_no_str}】 {title_str}", 'id': race_id, 'url': f"https://race.netkeiba.com/race/shutuba.html?race_id={race_id}", 'grade': grade})
+                
+                # Add time to label and keep raw time for sorting
+                label_str = f"【{place_name} {r_no_str}】 {race_time} {title_str}"
+                race_list.append({'label': label_str, 'id': race_id, 'url': f"https://race.netkeiba.com/race/shutuba.html?race_id={race_id}", 'grade': grade, 'time': race_time})
                 seen_ids.add(race_id)
-            if race_list: return race_list
+            if race_list:
+                # Sort by time, then by race_id as tiebreaker
+                race_list.sort(key=lambda x: (x['time'], x['id']))
+                return race_list
     return race_list
 
 @st.cache_data(ttl=600)
