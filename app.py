@@ -1150,7 +1150,8 @@ def process_passage_rank(passage):
 @st.cache_data(ttl=600)
 def calc_horse_history(_engine, horse_names_tuple, target_date):
     horse_names = list(horse_names_tuple)
-    clean_names = [n.replace(" ", "").replace("　", "") for n in horse_names]
+    # Python側でも強力に空白除去 (タブや改行を含む)
+    clean_names = [re.sub(r'\s+', '', str(n)) for n in horse_names]
     names_str = "', '".join([n.replace("'", "''") for n in clean_names])
     
     query = f"""
@@ -1171,8 +1172,9 @@ def calc_horse_history(_engine, horse_names_tuple, target_date):
         hist_df['着差'] = hist_df['着差'].apply(convert_raw_margin)
         hist_df['money'] = pd.to_numeric(hist_df['賞金(万円)'], errors='coerce').fillna(0)
         hist_df['is_win'] = (hist_df['着順'] == 1).astype(int)
-        hist_df['馬名_clean'] = hist_df['馬名'].astype(str).str.replace(" ", "").str.replace("　", "")
-        hist_df['騎手_clean'] = hist_df['騎手'].astype(str).str.replace(" ", "").str.replace("　", "")
+        # DataFrame側も同様に強力除去
+        hist_df['馬名_clean'] = hist_df['馬名'].astype(str).apply(lambda x: re.sub(r'\s+', '', x))
+        hist_df['騎手_clean'] = hist_df['騎手'].astype(str).apply(lambda x: re.sub(r'\s+', '', x))
         
         # 各レースの頭数を取得して正規化
         rids = tuple(hist_df['race_id'].dropna().unique())
@@ -1191,7 +1193,7 @@ def calc_horse_history(_engine, horse_names_tuple, target_date):
 
         stats = []
         for horse in horse_names:
-            h_clean = horse.replace(" ", "").replace("　", "")
+            h_clean = re.sub(r'\s+', '', str(horse))
             h_data = hist_df[hist_df['馬名_clean'] == h_clean]
             
             if h_data.empty:
@@ -1429,14 +1431,17 @@ def predict_race(df, model_pack, encoders, _engine):
     if 'sire_name' not in df.columns: df['sire_name'] = '-'
     if 'bms_name' not in df.columns: df['bms_name'] = '-'
     
-    # 履歴カラムのデフォルト初期化
+    # 履歴カラムのデフォルト初期化 (fillnaで強制的に埋める)
     history_cols_defaults = {
         'prev_distance': 1600, 'prev_course_type': 'Unknown', 'prev_jockey': 'Unknown',
         'nige_rate': 0, 'senko_rate': 0, 'avg_pos_rate': 0.5, 'run_style_ratio': 0,
         'recent_rank_avg': 8.0, 'std_recent_3f': 0
     }
     for c, v in history_cols_defaults.items():
-        if c not in df.columns: df[c] = v
+        if c not in df.columns:
+            df[c] = v
+        else:
+            df[c] = df[c].fillna(v)
 
     df['距離'] = pd.to_numeric(df['距離'], errors='coerce').fillna(1600)
     df['prev_distance'] = pd.to_numeric(df['prev_distance'], errors='coerce').fillna(df['距離'])
