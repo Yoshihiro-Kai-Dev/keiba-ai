@@ -357,9 +357,8 @@ def load_custom_css():
                 margin-bottom: 5px; 
                 justify-content: flex-end; 
                 width: 100%; 
-                order: -1; 
             }}
-            .ai-list-card > div:nth-child(2) {{ order: -2; }} /* Horse Name */
+            /* .ai-list-card > div:nth-child(2) {{ order: -2; }} Horse Name is 2nd child, so natural order places it below badges */
         }}
         
         .to-top-btn {{
