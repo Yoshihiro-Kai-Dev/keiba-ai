@@ -91,7 +91,7 @@ def generate_gemini_comment(row):
     競馬新聞のベテラン記者が書くような、読み手の心を揺さぶる「熱くも冷静な推奨コメント」で書いてください。
 
     【馬データ】
-    ・馬名: {row['馬名']}
+    ・馬名: {row['馬名']} (馬番: {int(row['馬番'])} / 枠番: {int(row.get('枠番', 0))})
     ・騎手: {row['騎手']} (勝率: {row.get('jockey_win_rate', 0)*100:.1f}%)
     ・調教師: {row['調教師']} (勝率: {row.get('trainer_win_rate', 0)*100:.1f}%)
     ・父: {row.get('sire_name', '不明')} (勝率: {row.get('sire_win_rate', 0)*100:.1f}%)
@@ -107,23 +107,24 @@ def generate_gemini_comment(row):
     【執筆ヒント：推奨理由の組み立て】
     - 過去走で速い上がり（メンバー最速など）を使っている場合、展開が向けば突き抜ける可能性。
     - 前走大敗でも、今回距離短縮や得意コースへの変更があれば「一変の余地」として強調。
-    - A I Ratingが高いのは、血統・騎手・展開のすべてがハイレベルで噛み合っている証拠。
-    - **重要: AI Ratingが低くても、「注目ポイント」に記載がある場合は、それがAIが見抜いた"勝てる大穴"（展開の神など）です。その点を猛プッシュしてください。**
+    - AI Ratingが高いのは、血統・騎手・展開のすべてがハイレベルで噛み合っている証拠。
+    - **重要: AI Ratingがより高い他馬がいたとしても、「注目ポイント」に記載がある場合は、それがAIが見抜いた"勝てる穴"（展開ブーストなど）です。その点を猛プッシュしてください。**
 
     【例文１（差し馬の場合）】
     前走はスローに泣いたが、終いの脚は際立っていた。今回は展開が速くなりそうで、この馬の豪脚が炸裂する舞台は整った。AI Rating 85が示す通り、地力は一枚上。ここは迷わず突き抜けるシーンを期待したい。
 
     【例文２（逃げ・先行馬の場合）】
-    近走の安定感は特筆もの。今回のメンバー構成なら楽に先手を奪えるはずだ。血統的にもこの舞台はベストで、内枠を利しての逃げ切りが濃厚。鉄板の軸として、これ以上の存在は見当たらない。
+    近走の安定感は特筆もの。今回のメンバー構成なら楽に先手を奪えるはずだ。血統的にもこの舞台はベストで、展開を利しての逃げ切りが濃厚。鉄板の軸として、これ以上の存在は見当たらない。
 
     【執筆ルール（絶対遵守）】
     1. **250文字程度**でプロの記者風にまとめる。
-    2. 「～です」「～ます」は禁止。「～だ！」「～だろう」「～に違いない」と断定・推量口調にする。
+    2. 「～です」「～ます」は禁止。「～だ」「～だろう」「～に違いない」と断定・推量口調にする。
     3. 数値を並べるのではなく、「驚異の勝率」「安定感抜群」といった**感情的な言葉**に変換する。
     4. 最後に必ず、「迷わず買え！」「本命はこの馬だ！」といった力強い一言で締める。
     5. 競馬ファンが好む「専門用語（脚質、展開、騎手や馬の特徴、血統など）」を自然に混ぜる。
     6. 20%の確率でオネェ口調になる。
     7. AI評価値（Rating）80以上の場合は、500文字程度で語る。
+    8. 「注目ポイント」に記載がある場合は、500文字程度で語る。
     """
 
     genai.configure(api_key=api_key)
@@ -298,7 +299,7 @@ def load_custom_css():
         .ai-list-card::before {{ content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--primary-gradient); }}
         .ai-list-card.fire::before {{ background: linear-gradient(135deg, #ef4444 0%, #f59e0b 100%); }}
         .ai-list-card.fire {{ background-color: #fffbfc; }}
-        .ai-list-card.fire::after {{ content: '🔥'; position: absolute; top: 10px; right: 80px; font-size: 2rem; opacity: 0.1; transform: rotate(15deg); }}
+        .ai-list-card.fire::after {{ content: '🔥'; position: absolute; bottom: 10px; right: 10px; font-size: 3rem; opacity: 0.1; transform: rotate(-15deg); }}
 
         .ai-card-badges {{ position: absolute; top: 16px; right: 16px; display: flex; gap: 6px; }}
         
@@ -317,10 +318,12 @@ def load_custom_css():
         .boost-leader {{ background: linear-gradient(135deg, #f59e0b, #d97706); }} 
         .boost-course {{ background: linear-gradient(135deg, #10b981, #047857); }} 
         .boost-speed {{ background: linear-gradient(135deg, #3b82f6, #1d4ed8); }} 
-        .boost-dist {{ background: linear-gradient(135deg, #06b6d4, #0891b2); }} 
         .boost-pace {{ background: linear-gradient(135deg, #ec4899, #be185d); }} 
         .boost-gokyak {{ background: linear-gradient(135deg, #6366f1, #4f46e5); }}
-        .boost-horse-course {{ background: linear-gradient(135deg, #ea580c, #c2410c); }} 
+        .boost-horse-course {{ background: linear-gradient(135deg, #ea580c, #c2410c); }}
+        .boost-form {{ background: linear-gradient(135deg, #0d9488, #0f766e); }}
+
+        .hero-badges {{ position: absolute; top: 32px; right: 170px; display: flex; gap: 5px; z-index: 10; }} 
 
         .report-card-dual {{ background: #fff; border: 1px solid #e2e8f0; padding: 20px; border-radius: 24px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.03); transition: all 0.3s; position: relative; overflow: hidden; }}
         .report-card-dual:hover {{ transform: translateY(-5px); border-color: var(--primary-color); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }}
@@ -340,8 +343,10 @@ def load_custom_css():
             .header-container {{ margin: -4rem -1rem 2rem -1rem; padding: 60px 10px; border-radius: 0 0 30px 30px; }}
             .header-title {{ font-size: 2.2rem; }}
             .hero-stats-grid {{ grid-template-columns: repeat(1, 1fr); }}
-            .hero-horse {{ margin-top: 50px; font-size: 1.8rem; }}
+            .hero-horse {{ margin-top: 10px; font-size: 1.8rem; }}
             .report-val-sm {{ font-size: 1.3rem; }}
+            .hero-badges {{ position: static; margin-bottom: 10px; justify-content: center; transform: scale(0.9); }}
+            .hero-card {{ padding: 15px; }}
         }}
         
         .to-top-btn {{
@@ -530,7 +535,7 @@ def get_grade(title):
     if 'GIII' in title or 'G3' in title or 'JpnIII' in title: return 'G3'
     if '(L)' in title or '[L]' in title: return 'L' 
     if '(OP)' in title: return 'OP'
-    return '一般'
+    return '条件戦'
 
 def get_grade_class_name(grade):
     if 'G1' in grade: return 'bg-G1'
@@ -638,10 +643,15 @@ def render_hero_card(row):
     html = f"""
     <div class="hero-card stCard {fire_class}">
         <div class="hero-rating-box">
-            <div class="hero-rating-label">AI RATING</div>
+            <div class="hero-rating-label" title="AI予測勝率 × 400 (勝率25%なら100点)">AI RATING <span style="font-size:0.8em">ℹ️</span></div>
             <div class="hero-rating-val">{rating}</div>
         </div>
-        <div class="hero-label">🏆 AI推奨 No.1</div>
+        <div class="hero-badges">
+            { '<span class="strategy-badge" style="background:#fce7f3; color:#be185d;">🌀 展開利</span>' if "展開" in row.get('判定','') else '' }
+            { '<span class="strategy-badge" style="background:#fffbeb; color:#d97706;">🦄 鉄板</span>' if "黄金" in row.get('判定','') else '' }
+            { '<span class="strategy-badge" style="background:#fee2e2; color:#b91c1c;">💣 穴馬</span>' if "穴" in row.get('判定_穴','') else '' }
+            <span class="strategy-badge" style="background:#fff; color:#333; border:1px solid #ddd;">🏆 推奨No.1</span>
+        </div>
         <div class="hero-horse"><span style="font-size:0.6em; opacity:0.6;">#{int(row['馬番'])}</span> {row['馬名']}</div>
         <div class="hero-stats-grid">
             <div class="hero-stat-item">
@@ -686,20 +696,21 @@ def render_ai_list_item(row, overlap_badges):
     is_bet = row.get('is_bet_target', False)
     
     badges_html = ""
-    # ★追加: 購入対象なら「BUY」バッジを先頭に追加
+    # ★追加: 購入対象なら「BUY」バッジを先頭に追加（黒×金で視認性アップ）
     if is_bet:
-        badges_html += '<span class="strategy-badge" style="background:#ffd700; color:#000; border:2px solid #000; font-weight:900; font-size:0.85rem;">🎯 BUY</span> '
+        badges_html += '<span class="strategy-badge" style="background:#111; color:#ffd700; border:2px solid #ffd700; font-weight:900; font-size:0.9rem; box-shadow:0 2px 4px rgba(0,0,0,0.3);">👑 BUY</span> '
 
-    if "pace" in overlap_badges: badges_html += '<span class="strategy-badge" style="background:#fce7f3; color:#be185d;">🚀 展開神</span>'
+    if "pace" in overlap_badges: badges_html += '<span class="strategy-badge" style="background:#fce7f3; color:#be185d;">🌀 展開利</span>'
     if "ai" in overlap_badges: badges_html += '<span class="strategy-badge" style="background:#fffbeb; color:#d97706;">🦄 鉄板</span>'
     if "hole" in overlap_badges: badges_html += '<span class="strategy-badge" style="background:#fee2e2; color:#b91c1c;">💣 穴馬</span>'
     
-    # ★変更: 購入対象なら枠線を赤く太くし、背景色を微調整
+    # ★変更: 色被りを避けるため、BUY対象は「青紫系(Indigo)」の強力なボーダーとシャドウで差別化する
+    # ★変更: 色被りを避けるため、BUY対象は「青紫系(Indigo)」の強力なボーダーとシャドウで差別化する
+    fire_class = "fire" if rating >= 80 else ""
+    
     if is_bet:
-        fire_class = "fire" # 強制的に炎エフェクト有効
-        card_style = "border: 3px solid #ef4444 !important; background-color: #fffaf0 !important; transform: scale(1.01); box-shadow: 0 8px 16px rgba(239, 68, 68, 0.15) !important;"
+        card_style = "border: 4px solid #6366f1 !important; background: linear-gradient(to right, #eef2ff, #fff) !important; transform: scale(1.02); box-shadow: 0 12px 24px rgba(99, 102, 241, 0.3) !important; z-index:100; position:relative;"
     else:
-        fire_class = "fire" if rating >= 80 else ""
         card_style = ""
 
     bar_color = "linear-gradient(135deg, #ef4444 0%, #f59e0b 100%)" if rating >= 80 else "var(--primary-gradient)"
@@ -715,9 +726,10 @@ def render_ai_list_item(row, overlap_badges):
             elif "先行" in r: cls = "boost-leader"
             elif "コース" in r: cls = "boost-course"
             elif "巧者" in r: cls = "boost-horse-course"
-            elif "短縮" in r: cls = "boost-dist"
+
             elif "展開" in r: cls = "boost-pace"
             elif "豪脚" in r: cls = "boost-gokyak"
+            elif "好調" in r: cls = "boost-form"
             
             boost_html += f'<span class="boost-badge {cls}">{r}</span>'
 
@@ -735,7 +747,7 @@ def render_ai_list_item(row, overlap_badges):
         <div style="margin-bottom:8px;">{boost_html}</div>
         <div style="background:rgba(128,128,128,0.1); border-radius:8px; padding:8px; font-size:0.8rem;">
             <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
-                <span style="color:var(--sub-text);">AI Rating</span>
+                <span style="color:var(--sub-text); cursor:help;" title="AI予測勝率 × 400 (勝率25%なら100点)">AI Rating ℹ️</span>
                 <span style="font-weight:bold; color:var(--primary-color);">{rating}</span>
             </div>
             <div style="background:rgba(128,128,128,0.2); height:6px; border-radius:3px; overflow:hidden;">
@@ -750,15 +762,17 @@ def render_ai_list_item(row, overlap_badges):
 def render_ev_legend():
     html = f"""
     <div class="ev-legend-box">
-        <span style="font-weight:bold; font-size:0.85rem;">📊 勝利の方程式 (The Holy Grail)</span>
-        <span style="font-size:0.85rem; margin-left:10px;"><span style="color:#be185d; font-weight:900;">🚀 展開の神</span> : 展開利あり & 勝率5%↑ & オッズ10~100倍 (ROI: 107%🏆)</span>
-        <span style="font-size:0.85rem; margin-left:10px;"><span style="color:#d97706; font-weight:900;">🦄 鉄板の軸</span> : AI自信度No.1 (ROI: 80% / 的中重視)</span>
-        <span style="font-size:0.85rem; margin-left:10px;"><span style="color:#b91c1c; font-weight:900;">💣 穴馬の極意</span> : 勝率8%↑ & オッズ50~100倍 (ROI: 87%)</span>
-        <br>
-        <span style="font-size:0.8rem; margin-left:120px;">
-            ※ <strong>展開利</strong>: スローの先行、ハイペースの差しなど、展開が味方する馬。<br>
-            ※ <strong>ROI集計期間</strong>: {BACKTEST_PERIOD}
-        </span>
+        <div style="font-weight:bold; font-size:0.9rem; margin-bottom:8px;">📊 勝利の方程式 (The Holy Grail)</div>
+        <div style="display:flex; flex-direction:column; gap:6px;">
+            <div><span style="color:#be185d; font-weight:900;">🚀 展開ブースト</span> : 展開利あり & 勝率5%↑ & オッズ10~100倍 (ROI: 110%🏆)</div>
+            <div><span style="color:#d97706; font-weight:900;">🦄 鉄板の軸</span> : AI自信度No.1 (ROI: 80% / 的中重視)</div>
+            <div><span style="color:#b91c1c; font-weight:900;">💣 穴馬ブースト</span> : 勝率8%↑ & オッズ50~100倍 (ROI: 87%)</div>
+        </div>
+        <div style="margin-top:10px; font-size:0.8rem; color:var(--sub-text); border-top:1px dashed #ddd; padding-top:6px;">
+            <div>※ <strong>展開利</strong>: スローの先行、ハイペースの差しなど、展開が味方する馬</div>
+            <div>※ <strong>AI Rating</strong>: AI予測勝率に基づくスコア（係数400: 勝率25%なら100点）</div>
+            <div>※ <strong>ROI集計期間</strong>: {BACKTEST_PERIOD} までのデータを利用したバックテスト</div>
+        </div>
     </div>
     """
     return html.replace('\n', '')
@@ -773,9 +787,65 @@ def render_badge_legend():
         <div class="badge-legend-item"><span class="boost-badge boost-jockey">🔥高勝率騎手</span> : 騎手の通算勝率が15%以上</div>
         <div class="badge-legend-item"><span class="boost-badge boost-leader">🚀先行型</span> : 過去5走で「4角4番手以内」のレースが半数以上</div>
         <div class="badge-legend-item"><span class="boost-badge boost-gokyak">⚡豪脚</span> : 後方待機から鋭い末脚を使うタイプ</div>
+        <div class="badge-legend-item"><span class="boost-badge boost-form">📈近走好調</span> : 近走の平均着順が3位以内と安定している</div>
     </div>
     """
     return html.replace('\n', '')
+
+
+def render_feature_importance_sidebar(model_pack):
+    if not model_pack: return
+    
+    with st.expander("🔍 モデル特徴量の重要度", expanded=False):
+        try:
+            model = model_pack['model']
+            feature_names = model_pack['features']
+            importance = model.feature_importance(importance_type='gain')
+            
+            # 日本語マッピング
+            NAME_MAP = {
+                'odds': '単勝オッズ', 'popularity': '人気順', 'interval_weeks': '間隔(週)',
+                'std_recent_rank': '近走着順(偏差)', 'recent_rank_avg': '近走着順',
+                'prev_rank': '前走着順',
+                'tag_win_rate': '騎手×調教師', 'jockey_course_win_rate': '騎手(コース)',
+                'jockey_course_rentai_rate': '騎手連対(コース)', '調教師': '調教師ID', '騎手': '騎手ID',
+                'std_jockey_win': '騎手勝率(偏差)', 'avg_pos_rate': '平均位置取り',
+                'win_ratio': '馬勝率', 'nige_rate': '逃げ率', 'senko_rate': '先行率',
+                'senko_count': '先行回数', 'std_recent_3f': '近走上がり(偏差)',
+                'recent_3f_avg': '近走上がり', 'horse_count': '頭数',
+                'std_sire_win': '種牡馬(偏差)', 'sire_win_rate': '種牡馬勝率',
+                'sire_course_win_rate': '種牡馬(コース)', 'bms_win_rate': '母父勝率',
+                'course_waku_win_rate': '枠番(コース)', 'クラス': 'クラス',
+                'prev_margin': '前走着差', 'prev_3f': '前走上がり', 'prev_distance': '前走距離',
+                'dist_change': '距離増減', 'course_change': '芝ダ替わり',
+                'rotation': 'ローテ', 'trainer_win_rate': '調教師勝率', 'jockey_win_rate': '騎手勝率',
+                'total_wins': '通算勝利', 'total_money': '獲得賞金',
+                'age': '馬齢', 'weight': '斤量', 'run_style_ratio': '脚質傾向',
+                'crs_rate': 'コース実績', 'dist_to_first_corner': '初角距離',
+                'is_high_pace_forecast': 'ハイペース予', 'is_slow_pace_forecast': 'スローペース予'
+            }
+            
+            # データフレーム化
+            df_imp = pd.DataFrame({'Feature': feature_names, 'Gain': importance})
+            df_imp['Name'] = df_imp['Feature'].map(lambda x: NAME_MAP.get(x, x))
+            df_imp = df_imp.sort_values('Gain', ascending=False).head(20)
+            
+            # 正規化して表示(対数スケールを使って小規模な特徴量も可視化)
+            # Gainが極端に偏るため、np.log1p を使用
+            log_gains = np.log1p(df_imp['Gain'])
+            max_log = log_gains.max()
+            df_imp['Score'] = (log_gains / max_log * 100).astype(int)
+            
+            # 表示
+            st.dataframe(
+                df_imp[['Name', 'Score']].set_index('Name'),
+                column_config={'Score': st.column_config.ProgressColumn('影響度', format="%d", min_value=0, max_value=100)},
+                use_container_width=True
+            )
+            st.caption("※AIの予測にどれだけ強く影響したかを表す指標 (LightGBM-Gain,Log Scale)")
+            
+        except Exception as e:
+            st.error(f"Error: {e}")
 
 def render_report_card_dual(label, hit_count, bets, win_roi, place_roi):
     if bets > 0:
@@ -1561,7 +1631,7 @@ def predict_race(df, model_pack, encoders, _engine):
         df['AIスコア'] = 0
         df['raw_preds'] = 0
         
-    df['AI Rating'] = (df['AIスコア'] * 500).clip(0, 99).astype(int)
+    df['AI Rating'] = (df['AIスコア'] * 400).clip(0, 99).astype(int)
     
     df['騎手'] = df['騎手_db'].fillna(df['騎手'])
     df['調教師'] = df['調教師_db'].fillna(df['調教師'])
@@ -1576,7 +1646,7 @@ def predict_race(df, model_pack, encoders, _engine):
         if row.get('avg_pos_rate', 0) > 0.7 and row.get('std_recent_3f', 0) < -0.5: r.append("⚡豪脚")
         if row['recent_rank_avg'] < 3.0 and row['recent_rank_avg'] > 0: r.append("📈近走好調")
         if row['sire_win_rate'] > 0.1: r.append("🩸良血")
-        if row.get('is_dist_shorten', 0) == 1: r.append("📏距離短縮")
+
         return " ".join(r)
     df['BoostReason'] = df.apply(get_reason, axis=1)
     
@@ -1589,17 +1659,17 @@ def predict_race(df, model_pack, encoders, _engine):
         except: o = 0.0
         
         if row['is_pace_advantage'] == 1 and p >= 0.05 and 10.0 <= o <= 100.0:
-            return "🚀 展開の神", "-"
+            return "🚀 展開ブースト", "-"
         if p >= 0.08 and 50.0 <= o <= 100.0:
-            return "-", "💣 穴馬の極意"
+            return "-", "💣 穴馬ブースト"
         if p >= 0.20 and 5.0 <= o <= 30.0:
             return "💎 黄金法則", "-"
         return "-", "-"
 
     df[['判定', '判定_穴']] = df.apply(lambda x: pd.Series(get_rec(x)), axis=1)
     
-    # ★修正: 展開の神（Boost対象）を強制的に最上位に表示する
-    df['is_boost'] = (df['判定'] == "🚀 展開の神").astype(int)
+    # ★修正: 展開ブースト（Boost対象）を強制的に最上位に表示する
+    df['is_boost'] = (df['判定'] == "🚀 展開ブースト").astype(int)
     
     trace_cols = ['馬名', 'date', 'interval_weeks', 'prev_3f', 'prev_margin', 'recent_3f_avg', 'jockey_win_rate', 'dist_change', 'nige_rate', 'senko_rate', 'is_pace_advantage']
     for c in trace_cols:
@@ -1621,8 +1691,8 @@ def process_one_race(race, model, encoders, engine, driver=None):
             
             # ★変更: 抽出された馬リストの中で、最もAIスコアが高い馬を「購入対象」としてマークする
             
-            # 1. 展開の神 (スコア順にソートして先頭1頭をBUY対象にする)
-            pace_hits = res[res['判定'] == "🚀 展開の神"].copy()
+            # 1. 展開ブースト (スコア順にソートして先頭1頭をBUY対象にする)
+            pace_hits = res[res['判定'] == "🚀 展開ブースト"].copy()
             pace_buy_idx = -1
             if not pace_hits.empty:
                 pace_hits = pace_hits.sort_values(['AIスコア', 'raw_preds'], ascending=[False, False])
@@ -1632,7 +1702,7 @@ def process_one_race(race, model, encoders, engine, driver=None):
                 pace_buy_idx = pace_hits.index[0]
             
             # 2. 穴馬 (同様にソートして先頭1頭をBUY対象にする)
-            hole_hits = res[res['判定_穴'] == "💣 穴馬の極意"].copy()
+            hole_hits = res[res['判定_穴'] == "💣 穴馬ブースト"].copy()
             hole_buy_idx = -1
             if not hole_hits.empty:
                 hole_hits = hole_hits.sort_values(['AIスコア', 'raw_preds'], ascending=[False, False])
@@ -1920,7 +1990,7 @@ def main():
             <div class="header-overlay"></div>
             <div class="header-content">
                 <h1 class="header-title">KaiのゆるっとAI<br><span class="beta-badge">Ver.1.0.0</span></h1>
-                <div class="header-subtitle">展開利を見抜いて回収率108%!?</div>
+                <div class="header-subtitle">AI×展開利で回収率100%↑！?</div>
             </div>
         </div>
     """, unsafe_allow_html=True)
@@ -1928,7 +1998,10 @@ def main():
     with st.sidebar:
         st.header("System Status")
         model, encoders, engine, logs = load_resources(0)
-        if model: st.success(f"✅ Model Loaded: Pace Aware (Feats: {len(model['features'])})")
+        if model: 
+            model_name = os.path.basename(MODEL_PATH)
+            st.success(f"✅ Model Loaded: {model_name}")
+            render_feature_importance_sidebar(model)
         else: st.error("Model Load Failed")
 
     if 'race_list' not in st.session_state: st.session_state.race_list = []
@@ -2029,7 +2102,7 @@ def main():
 
             w1, b1, roi_w1, roi_p1 = get_rois(stats['pace'])
             with r1:
-                st.markdown(render_report_card_dual("🚀 展開の神", w1, b1, roi_w1, roi_p1), unsafe_allow_html=True)
+                st.markdown(render_report_card_dual("🚀 展開ブースト", w1, b1, roi_w1, roi_p1), unsafe_allow_html=True)
                 if st.button("🔽 リストを開く", key="jump_pace", on_click=toggle_expander, args=('pace',), use_container_width=True): pass
                 if st.session_state.expander_states['pace']: js_scroll_to('section_pace')
 
@@ -2041,14 +2114,14 @@ def main():
 
             w2, b2, roi_w2, roi_p2 = get_rois(stats['hole'])
             with r3:
-                st.markdown(render_report_card_dual("💣 穴馬の極意", w2, b2, roi_w2, roi_p2), unsafe_allow_html=True)
+                st.markdown(render_report_card_dual("💣 穴馬ブースト", w2, b2, roi_w2, roi_p2), unsafe_allow_html=True)
                 if st.button("🔽 リストを開く", key="jump_hole", on_click=toggle_expander, args=('hole',), use_container_width=True): pass
                 if st.session_state.expander_states['hole']: js_scroll_to('section_hole')
             
             with st.expander("🏆 的中実績の詳細", expanded=False):
                 if st.session_state.hits_details:
                     df_hits = pd.DataFrame(st.session_state.hits_details)
-                    t1, t2, t3 = st.tabs(["🚀 展開の神", "🦄 鉄板", "💣 穴馬"])
+                    t1, t2, t3 = st.tabs(["🚀 展開ブースト", "🦄 鉄板", "💣 穴馬"])
                     with t1:
                         sub = df_hits[df_hits['戦略'] == 'pace']
                         if not sub.empty: st.dataframe(sub, hide_index=True)
@@ -2093,23 +2166,16 @@ def main():
             if st.button(f"🔼 リストを閉じる", key=f"close_{mode}", on_click=toggle_expander, args=(mode,), use_container_width=True): pass
 
         st.markdown('<div id="section_pace"></div>', unsafe_allow_html=True)
-        with st.expander("🚀 展開の神 (ROI 107%〜)", expanded=st.session_state.expander_states['pace']):
+        with st.expander("🚀 展開ブースト (ROI 110%〜)", expanded=st.session_state.expander_states['pace']):
             render_scan_list(results['pace'], 'pace')
         st.markdown('<div id="section_ai"></div>', unsafe_allow_html=True)
         with st.expander("🦄 鉄板の軸 (ROI 80%)", expanded=st.session_state.expander_states['ai']):
             render_scan_list(results['ai'], 'ai')
         st.markdown('<div id="section_hole"></div>', unsafe_allow_html=True)
-        with st.expander("💣 穴馬の極意 (ROI 87%)", expanded=st.session_state.expander_states['hole']):
+        with st.expander("💣 穴馬ブースト (ROI 87%)", expanded=st.session_state.expander_states['hole']):
             render_scan_list(results['hole'], 'hole')
 
-        # ★追加: 診断機能の表示
-        st.markdown("<br>", unsafe_allow_html=True)
-        with st.expander("🕵️‍♂️ スキャン診断 (該当なしの原因調査)", expanded=False):
-            if 'scan_debug_log' in st.session_state and st.session_state.scan_debug_log:
-                st.info("一括スキャン時にAIが認識したオッズを確認できます。ここが「0」になっている場合、判定ロジックで弾かれています。")
-                st.dataframe(pd.DataFrame(st.session_state.scan_debug_log))
-            else:
-                st.write("データがありません")
+
 
     with col_b:
         if st.session_state.race_list:
@@ -2132,14 +2198,7 @@ def main():
 
     st.markdown('</div>', unsafe_allow_html=True)
     
-    with st.expander("🔗 URL直接入力"):
-        input_url = st.text_input("レースURL", key="manual_url")
-        if st.button("URLで予想", key="btn_manual"):
-            st.session_state.selected_race_url = input_url
-            st.session_state.selected_race_name = "URL指定レース"
-            st.session_state.view_mode = 'detail'
-            st.session_state.auto_predict = True
-            st.rerun()
+
 
     st.markdown("<br>", unsafe_allow_html=True)
     
@@ -2196,7 +2255,7 @@ def main():
                         # ★ ここでGeminiを呼び出す！
                         # ★ 変更点: 戻り値を2つ受け取る
                         ai_comment, used_model = generate_gemini_comment(top)
-                        status.update(label="✅ 思考完了！", state="complete", expanded=False)
+                        status.update(label="🤖 AI予測完了！", state="complete", expanded=True)
         
                         # フェードイン効果付きで表示
                         st.markdown('<div class="fade-in">', unsafe_allow_html=True)
@@ -2253,16 +2312,16 @@ def main():
                         </div>
                         """, unsafe_allow_html=True)
                         
-                        pace_hits = res[res['判定'] == "🚀 展開の神"]
+                        pace_hits = res[res['判定'] == "🚀 展開ブースト"]
                         if not pace_hits.empty:
-                            st.markdown("### 🚀 展開の神 (ROI 107%🏆)")
+                            st.markdown("### 🚀 展開ブースト (ROI 110%↑🏆)")
                             for _, row in pace_hits.iterrows():
                                 ev_val = row['AIスコア'] * float(str(row['オッズ']).replace('-','0'))
                                 st.success(f"**#{row['馬番']} {row['馬名']}** ({row['騎手']}) - 単勝{row['オッズ']}倍 (EV: {ev_val:.2f}) - {row['BoostReason']}")
 
-                        hole_hits = res[res['判定_穴'] == "💣 穴馬の極意"]
+                        hole_hits = res[res['判定_穴'] == "💣 穴馬ブースト"]
                         if not hole_hits.empty:
-                            st.markdown("### 💣 穴馬の極意")
+                            st.markdown("### 💣 穴馬ブースト")
                             for _, row in hole_hits.iterrows():
                                 ev_val = row['AIスコア'] * float(str(row['オッズ']).replace('-','0'))
                                 st.error(f"**#{row['馬番']} {row['馬名']}** ({row['騎手']}) - 単勝{row['オッズ']}倍 (EV: {ev_val:.2f})")
@@ -2299,47 +2358,11 @@ def main():
                         st.download_button(label="📥 予想結果をCSVでダウンロード", data=csv, file_name=f"prediction_{datetime.date.today()}.csv", mime="text/csv")
                         st.markdown('</div>', unsafe_allow_html=True) # Close fade-in
                         
-                        with st.expander("🕵️‍♂️ AI内部データ診断", expanded=False):
-                            tabs_diag = st.tabs(["Hero Card Source", "Calculation Trace", "Prev Race Lookup", "血統", "騎手", "調教師", "Full Data", "Advanced Debug"])
-                            with tabs_diag[0]:
-                                st.code(render_hero_card(top), language='html')
-                            with tabs_diag[1]:
-                                st.write("変数の計算過程追跡ログ (Raw -> Feature)")
-                                st.dataframe(trace_df)
-                            with tabs_diag[2]:
-                                st.write("前走レース選択の正当性チェック (Target Date vs Prev Date)")
-                                st.dataframe(diag_data['prev_trace'])
-                            with tabs_diag[3]:
-                                if not diag_data['pedigree'].empty: st.dataframe(diag_data['pedigree'])
-                            with tabs_diag[4]:
-                                if not diag_data['jockey'].empty: st.dataframe(diag_data['jockey'])
-                            with tabs_diag[5]:
-                                if not diag_data['trainer'].empty: st.dataframe(diag_data['trainer'])
-                            with tabs_diag[6]:
-                                st.subheader("データマッチング確認")
+                        if not debug.empty:
+                            with st.expander("📥 診断用データのダウンロード (Full Data)", expanded=False):
                                 st.dataframe(debug)
                                 debug_csv = debug.to_csv(index=False).encode('utf-8_sig')
-                                st.download_button("📥 診断用データをCSVでダウンロード", debug_csv, "debug_data.csv", "text/csv")
-                            with tabs_diag[7]:
-                                st.subheader("Advanced Features Status")
-                                if diag_data['missing_advanced']:
-                                    st.warning(f"⚠️ 以下のAdvanced Featuresは現在ダミー値(0.0)で代用されています: {diag_data['missing_advanced']}")
-                                else:
-                                    st.success("All Advanced Features loaded.")
-                                
-                                if 'crs_rate_error' in diag_data:
-                                    st.error(f"CRS Rate Calculation Error: {diag_data['crs_rate_error']}")
-                                    
-                                if 'cw_error' in diag_data:
-                                    st.error(f"Course Waku Win Rate Error: {diag_data['cw_error']}")
-                                    
-                                if 'class_debug' in diag_data:
-                                    st.write("Class Value Check:")
-                                    st.write(diag_data['class_debug'])
-                                    
-                                if 'trainer_debug' in missing_info:
-                                     st.write("Trainer Matching Logic Trace:")
-                                     st.dataframe(missing_info['trainer_debug'])
+                                st.download_button("診断データをダウンロード", debug_csv, "debug_data.csv", "text/csv")
 
                 except Exception as e: st.error(f"エラー: {e}")
             else: st.warning("有効なデータがありません")
