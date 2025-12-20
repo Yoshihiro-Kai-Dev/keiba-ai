@@ -107,7 +107,8 @@ def generate_gemini_comment(row):
     【執筆ヒント：推奨理由の組み立て】
     - 過去走で速い上がり（メンバー最速など）を使っている場合、展開が向けば突き抜ける可能性。
     - 前走大敗でも、今回距離短縮や得意コースへの変更があれば「一変の余地」として強調。
-    - AI Ratingが高いのは、血統・騎手・展開のすべてがハイレベルで噛み合っている証拠。
+    - A I Ratingが高いのは、血統・騎手・展開のすべてがハイレベルで噛み合っている証拠。
+    - **重要: AI Ratingが低くても、「注目ポイント」に記載がある場合は、それがAIが見抜いた"勝てる大穴"（展開の神など）です。その点を猛プッシュしてください。**
 
     【例文１（差し馬の場合）】
     前走はスローに泣いたが、終いの脚は際立っていた。今回は展開が速くなりそうで、この馬の豪脚が炸裂する舞台は整った。AI Rating 85が示す通り、地力は一枚上。ここは迷わず突き抜けるシーンを期待したい。
@@ -750,7 +751,7 @@ def render_ev_legend():
     html = f"""
     <div class="ev-legend-box">
         <span style="font-weight:bold; font-size:0.85rem;">📊 勝利の方程式 (The Holy Grail)</span>
-        <span style="font-size:0.85rem; margin-left:10px;"><span style="color:#be185d; font-weight:900;">🚀 展開の神</span> : 展開利あり & 勝率10%↑ & オッズ10~100倍 (ROI: 108%🏆)</span>
+        <span style="font-size:0.85rem; margin-left:10px;"><span style="color:#be185d; font-weight:900;">🚀 展開の神</span> : 展開利あり & 勝率5%↑ & オッズ10~100倍 (ROI: 107%🏆)</span>
         <span style="font-size:0.85rem; margin-left:10px;"><span style="color:#d97706; font-weight:900;">🦄 鉄板の軸</span> : AI自信度No.1 (ROI: 80% / 的中重視)</span>
         <span style="font-size:0.85rem; margin-left:10px;"><span style="color:#b91c1c; font-weight:900;">💣 穴馬の極意</span> : 勝率8%↑ & オッズ50~100倍 (ROI: 87%)</span>
         <br>
@@ -1587,7 +1588,7 @@ def predict_race(df, model_pack, encoders, _engine):
             else: o = float(o_str)
         except: o = 0.0
         
-        if row['is_pace_advantage'] == 1 and p >= 0.10 and 10.0 <= o <= 100.0:
+        if row['is_pace_advantage'] == 1 and p >= 0.05 and 10.0 <= o <= 100.0:
             return "🚀 展開の神", "-"
         if p >= 0.08 and 50.0 <= o <= 100.0:
             return "-", "💣 穴馬の極意"
@@ -1597,12 +1598,16 @@ def predict_race(df, model_pack, encoders, _engine):
 
     df[['判定', '判定_穴']] = df.apply(lambda x: pd.Series(get_rec(x)), axis=1)
     
+    # ★修正: 展開の神（Boost対象）を強制的に最上位に表示する
+    df['is_boost'] = (df['判定'] == "🚀 展開の神").astype(int)
+    
     trace_cols = ['馬名', 'date', 'interval_weeks', 'prev_3f', 'prev_margin', 'recent_3f_avg', 'jockey_win_rate', 'dist_change', 'nige_rate', 'senko_rate', 'is_pace_advantage']
     for c in trace_cols:
         if c not in df.columns: df[c] = np.nan
     trace_df = df[trace_cols].copy()
     
-    return df.sort_values(['AIスコア', 'raw_preds'], ascending=[False, False]), df, X, diag_data, missing_info, trace_df
+    # ソート順: Boost対象 -> AIスコア -> 生スコア
+    return df.sort_values(['is_boost', 'AIスコア', 'raw_preds'], ascending=[False, False, False]), df, X, diag_data, missing_info, trace_df
 
 def process_one_race(race, model, encoders, engine, driver=None):
     """並列処理用の単一レース処理関数"""
@@ -2088,7 +2093,7 @@ def main():
             if st.button(f"🔼 リストを閉じる", key=f"close_{mode}", on_click=toggle_expander, args=(mode,), use_container_width=True): pass
 
         st.markdown('<div id="section_pace"></div>', unsafe_allow_html=True)
-        with st.expander("🚀 展開の神 (ROI 108%〜)", expanded=st.session_state.expander_states['pace']):
+        with st.expander("🚀 展開の神 (ROI 107%〜)", expanded=st.session_state.expander_states['pace']):
             render_scan_list(results['pace'], 'pace')
         st.markdown('<div id="section_ai"></div>', unsafe_allow_html=True)
         with st.expander("🦄 鉄板の軸 (ROI 80%)", expanded=st.session_state.expander_states['ai']):
@@ -2250,7 +2255,7 @@ def main():
                         
                         pace_hits = res[res['判定'] == "🚀 展開の神"]
                         if not pace_hits.empty:
-                            st.markdown("### 🚀 展開の神 (ROI 108%🏆)")
+                            st.markdown("### 🚀 展開の神 (ROI 107%🏆)")
                             for _, row in pace_hits.iterrows():
                                 ev_val = row['AIスコア'] * float(str(row['オッズ']).replace('-','0'))
                                 st.success(f"**#{row['馬番']} {row['馬名']}** ({row['騎手']}) - 単勝{row['オッズ']}倍 (EV: {ev_val:.2f}) - {row['BoostReason']}")
