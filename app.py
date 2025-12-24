@@ -1670,9 +1670,9 @@ def predict_race(df, model_pack, encoders, _engine):
             else: o = float(o_str)
         except: o = 0.0
         
-        if row['is_pace_advantage'] == 1 and p >= 0.05 and 20.0 <= o <= 50.0:
+        if row['is_pace_advantage'] == 1 and p >= 0.1 and 10.0 <= o <= 50.0:
             return "🚀 展開ブースト", "-"
-        if p >= 0.08 and 50.0 <= o <= 100.0:
+        if p >= 0.08 and 50.0 <= o <= 150.0:
             return "-", "💣 穴馬ブースト"
         if p >= 0.20 and 5.0 <= o <= 30.0:
             return "💎 黄金法則", "-"
